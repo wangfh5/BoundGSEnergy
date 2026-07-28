@@ -13,6 +13,14 @@ report = { source = "QuantumBFS/quantum.harness/skills/report" }
 cross-method-check = { source = "QuantumBFS/quantum.harness/skills/cross-method-check" }
 survey = { source = "QuantumBFS/sci-brain/skills/survey" }
 brainstorm-ideas = { source = "QuantumBFS/sci-brain/skills/brainstorm-ideas" }
+autoresearch = { source = "QuantumBFS/sci-brain/skills/autoresearch" }
+autoresearch-topics = { source = "QuantumBFS/sci-brain/skills/autoresearch-topics" }
+autoresearch-db = { source = "QuantumBFS/sci-brain/skills/autoresearch-db" }
+autoresearch-validator = { source = "QuantumBFS/sci-brain/skills/autoresearch-validator" }
+autoresearch-run = { source = "QuantumBFS/sci-brain/skills/autoresearch-run" }
+idea-writer = { source = "QuantumBFS/sci-brain/skills/idea-writer" }
+take-challenge = { source = "QuantumBFS/quantum.harness/skills/take-challenge" }
+challenge-report = { source = "QuantumBFS/quantum.harness/skills/challenge-report" }
 
 [options]
 

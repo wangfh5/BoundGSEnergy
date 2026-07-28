@@ -1,10 +1,58 @@
 [[skill]]
+name = "autoresearch"
+source = "https://github.com/QuantumBFS/sci-brain.git"
+kind = "git"
+path = "skills/autoresearch"
+commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
+checksum = "sha256:99beaff1d4352598a1ea40b69eef80561143405e63aaba73ec64949deec9c1e2"
+
+[[skill]]
+name = "autoresearch-db"
+source = "https://github.com/QuantumBFS/sci-brain.git"
+kind = "git"
+path = "skills/autoresearch-db"
+commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
+checksum = "sha256:24bca2cf4343c9b81ea6e8499575fa0337228892561b0099d88430c6ee54b496"
+
+[[skill]]
+name = "autoresearch-run"
+source = "https://github.com/QuantumBFS/sci-brain.git"
+kind = "git"
+path = "skills/autoresearch-run"
+commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
+checksum = "sha256:ff80eff9424d7b55f942e54f7a759bf14178c6188d186244c7d287efb9ac41f0"
+
+[[skill]]
+name = "autoresearch-topics"
+source = "https://github.com/QuantumBFS/sci-brain.git"
+kind = "git"
+path = "skills/autoresearch-topics"
+commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
+checksum = "sha256:34ab163860a6946fd1469a7f432a27722f5d58373449c15c9335bc3cde3f8313"
+
+[[skill]]
+name = "autoresearch-validator"
+source = "https://github.com/QuantumBFS/sci-brain.git"
+kind = "git"
+path = "skills/autoresearch-validator"
+commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
+checksum = "sha256:80ba763d1905f294c8f03ad17e6571ba640fe0fc4865ca6034c253527c031d45"
+
+[[skill]]
 name = "brainstorm-ideas"
 source = "https://github.com/QuantumBFS/sci-brain.git"
 kind = "git"
 path = "skills/brainstorm-ideas"
 commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
 checksum = "sha256:4020aa3aef1434e45d3a924fe446840d65bd9fde4c2ef5ee3faa87a4844cabd0"
+
+[[skill]]
+name = "challenge-report"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/challenge-report"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:905cc0915508430a3ce702e7b82450ef3d4ccfcabe6b2ca35a929636040db7cf"
 
 [[skill]]
 name = "cross-method-check"
@@ -21,6 +69,14 @@ kind = "git"
 path = "skills/download-ref"
 commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
 checksum = "sha256:47e4100427700b14820873d8e828d6f278d8a647970ed75013f72d8ff449b3ba"
+
+[[skill]]
+name = "idea-writer"
+source = "https://github.com/QuantumBFS/sci-brain.git"
+kind = "git"
+path = "skills/idea-writer"
+commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
+checksum = "sha256:9e974150838d46556ef69ce30415fd040908bd6b0d7f9689b0b0f9c628f113ad"
 
 [[skill]]
 name = "method-polyopt"
@@ -53,6 +109,14 @@ kind = "git"
 path = "skills/survey"
 commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
 checksum = "sha256:0cfab5e37c0a3b127f9d93ccd820bb4631ece0a7fd9c2301a1e663617c083375"
+
+[[skill]]
+name = "take-challenge"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/take-challenge"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:4438160f5ad6c4976ce79d4dcf708cf16f5e9c6718dcbb68d9c26a27ffb92c4d"
 
 [[skill]]
 name = "using-itensors"
