@@ -17,6 +17,8 @@ certified lower bounds for the 1D Heisenberg chain.
 Ladder: N = 20 (align with known values) → 50 → 100 → 200 (the #49 target).
 Each rung must validate (precision and cost) before the next is attempted.
 
+The existing compressed-LTI MVE bounds the energy density of an infinite translation-invariant chain. Its `2n` physical-site support is not a finite `N = 2n` system, so it does not by itself complete this ladder. The detailed research plan treats a finite periodic chain as the default interpretation of the challenge target unless the challenge owner confirms a hierarchy-support interpretation.
+
 ## 3. Success criteria (tiered)
 
 - **Floor (teaching success):** coarse-grained SDP reproduces known bounds at

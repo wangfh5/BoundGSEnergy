@@ -1,7 +1,7 @@
 # T2/T3 — Kull-Schuch compressed-LTI relaxation (PRX 14, 021008, Sec. II, Eq. 14)
 # for the 1D Heisenberg AFM chain, using super-spins (2 physical -> 1 super, d̂=4)
 # and the VUMPS uniform MPS as the coarse-graining map.
-# Self-checks: E(n,D) <= e0 = 1/4 - ln2; non-decreasing in n; <= E_LTI(2n physical).
+# Self-checks: E(n,D) <= e0 = 1/4 - ln2; non-decreasing in n; <= E_LTI at matching physical-site support.
 
 ENV["GKSwstype"] = "100"
 
@@ -94,7 +94,7 @@ function summarize_plateaus(results)
         completed = sort!(by_D[D]; by=first)
         summary["D$D"] = Dict(
             "largest_super_n" => completed[end][1],
-            "largest_physical_n" => 2 * completed[end][1],
+            "largest_support_sites" => 2 * completed[end][1],
             "best_gap_seen" => minimum(last.(completed)),
             "last_gap" => completed[end][2],
         )
@@ -212,13 +212,13 @@ function validate_cached_point(results, key, fingerprint, resume)
     true
 end
 
-function result_record(status, wall, fingerprint; E=nothing, gap=nothing, physical_n=nothing, super_n=nothing)
+function result_record(status, wall, fingerprint; E=nothing, gap=nothing, support_sites=nothing, super_n=nothing)
     rec = Dict{String, Any}(
         "status" => string(status),
         "wall" => wall,
         "coarse_grainer_fingerprint" => fingerprint,
     )
-    isnothing(physical_n) || (rec["physical_n"] = physical_n)
+    isnothing(support_sites) || (rec["support_sites"] = support_sites)
     isnothing(super_n) || (rec["super_n"] = super_n)
     isnothing(E) || (rec["E"] = E)
     isnothing(gap) || (rec["gap"] = gap)
@@ -393,7 +393,7 @@ end
 # ---------- main ----------
 function plot_results(rundir, results, Ds, lti)
     mkpath(joinpath(rundir, "figs"))
-    p = plot(xscale=:log10, yscale=:log10, xlabel="physical spins N", ylabel="Delta E",
+    p = plot(xscale=:log10, yscale=:log10, xlabel="constraint support (physical sites)", ylabel="Delta E",
              title="Compressed-LTI relaxation, Heisenberg chain",
              legend=:bottomleft, size=(800, 500))
     markers = [:circle, :square, :diamond, :utriangle, :dtriangle, :star6, :xcross]
@@ -497,11 +497,11 @@ function main(args)
                     flush(stdout)
                 end
                 results[key] = result_record(st, wall, fingerprint; E=E, gap=gap,
-                                             physical_n=2 * n, super_n=n)
+                                             support_sites=2 * n, super_n=n)
             else
                 println("   WARNING: non-optimal status $st at D=$D n=$n -- no certificate, skipping")
                 flush(stdout)
-                results[key] = result_record(st, wall, fingerprint; physical_n=2 * n, super_n=n)
+                results[key] = result_record(st, wall, fingerprint; support_sites=2 * n, super_n=n)
             end
             results["plateaus"] = summarize_plateaus(results)
             write_results(json_path, results)

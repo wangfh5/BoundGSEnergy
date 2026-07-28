@@ -41,20 +41,45 @@ New `j1j2_1d/` and `j1j2_2d/` folders will be created only when those stages sta
 
 ```mermaid
 flowchart LR
-    A[Dense compressed-LTI baseline] --> B[Symmetry and block-size probe]
-    B --> C[Hybrid NPA feasibility]
-    C --> D[1D Heisenberg N=20,50,100,200]
-    D --> E[1D J1-J2]
-    C --> F[2D coarse-graining design]
-    F --> G[2D Heisenberg]
-    G --> H[2D J1-J2]
+    A[Infinite-chain compressed-LTI baseline] --> B[Finite-size target contract]
+    B --> C[Symmetry and block-size probe]
+    C --> D[Hybrid NPA feasibility]
+    D --> E[1D Heisenberg N=20,50,100,200]
+    E --> F[1D J1-J2]
+    D --> G[2D coarse-graining design]
+    G --> H[2D Heisenberg]
+    H --> I[2D J1-J2]
 ```
 
 Only the next ungated stage should consume substantial compute.
 
+## Stage H0 — finite-size target contract
+
+**Goal.** Establish what object must be certified at the challenge sizes before extending the infinite-chain prototype.
+
+The current compressed-LTI SDP minimizes the energy density of an infinite translation-invariant chain. Its hierarchy depth `n_super` retains constraints with `support_sites = 2n_super`, but it does not construct a finite `support_sites`-spin Hamiltonian or include finite-size boundary terms. A depth of `n_super = 100` is therefore not automatically a certified lower bound for a 200-spin system.
+
+Unless the challenge owner explicitly confirms that the target counts local-constraint support, the working interpretation is a finite periodic `N`-spin chain, matching the structured-NPA baseline.
+
+**Work.**
+
+1. Write the finite-size primal problem and its boundary conditions before implementation.
+2. Derive how the certificate-preserving coarse-graining maps act on the finite periodic compatibility constraints.
+3. Implement the smallest nontrivial finite-size point and compare it with uncompressed structured NPA and an exact finite-chain reference.
+4. Keep the infinite-chain compressed-LTI solver as a method and cost baseline, not as evidence for a finite-`N` claim.
+
+**Acceptance gate.**
+
+- The objective contains every finite-chain bond with a documented per-site normalization.
+- Boundary constraints are explicit and preserve the original finite Hamiltonian.
+- At `N = 20`, the coarse-grained bound is `OPTIMAL`, lies below the exact or variational reference, and is comparable with an uncompressed certified baseline.
+- Result metadata distinguishes `system_size` from `support_sites` and `n_super`.
+
 ## Stage H1 — symmetry and cost probe
 
 **Goal.** Determine whether exact spin symmetry can reduce the compressed SDP enough to make higher bond dimensions useful on the local machine.
+
+The first cost probe may use the existing infinite-chain formulation, but it is not evidence for a finite-size challenge point. Any successful block representation must subsequently be applied to the Stage H0 finite-size formulation.
 
 **Work.**
 
@@ -81,6 +106,8 @@ If correctness fails, fix the symmetry representation before any larger solve. I
 
 **Goal.** Show that one structured-NPA strengthening can be imposed on the compressed relaxation and raises the certified lower bound by more than solver noise.
 
+The first feasibility points use the infinite-chain prototype and its Bethe ceiling. A successful strengthening must then be ported to the Stage H0 finite-size formulation and checked against the corresponding finite-system reference before it contributes to the challenge ladder.
+
 **Candidate strengthenings, tested one at a time.**
 
 1. Exact symmetry constraints not already implied by the block representation.
@@ -99,14 +126,14 @@ QMBCertify is the behavioral reference for Pauli reduction, symmetry, and state-
 
 - `E_compressed ≤ E_hybrid ≤ e0` within stated numerical tolerance.
 - The hybrid result is `OPTIMAL`, and the improvement over the compressed baseline exceeds `2e-7`.
-- The added constraints have an explicit derivation showing that every physical translation-invariant ground state remains feasible.
+- The added constraints have an explicit derivation showing that every physical state admitted by the selected target problem remains feasible.
 - Block inventory, wall time, and achieved solver residuals are recorded.
 
 If no candidate produces a measurable tightening at affordable cost, record the negative result and move coarse-grainer optimization ahead of further NPA work.
 
 ## Stage H3 — 1D Heisenberg target ladder
 
-**Goal.** Reach the challenge target of 200 physical spins with an absolute energy-density gap of at most `1e-5`.
+**Goal.** Reach the challenge target of a finite 200-spin chain with an absolute energy-density gap of at most `1e-5`, unless Stage H0 records an explicit challenge-owner decision that the target instead refers to hierarchy support.
 
 **Ladder.**
 
@@ -115,7 +142,7 @@ If no candidate produces a measurable tightening at affordable cost, record the 
 3. Continue to `N = 100` only after the `N = 50` gate passes.
 4. Continue to `N = 200` only after memory and solve-time projections remain credible.
 
-For the two-spin super-site formulation, report both `N_physical` and `n_super` explicitly. Never label the hierarchy depth with an ambiguous bare `n` in result metadata or figures.
+For the two-spin super-site formulation, report `system_size`, `support_sites`, and `n_super` as separate fields. Never infer `system_size = support_sites` unless the formulation actually contains that finite system and its boundaries.
 
 At fixed coarse-grainer and relaxation family, bounds must be non-decreasing with hierarchy depth. Adding valid constraints at fixed depth shrinks the feasible set and cannot lower the optimum, but changing `D` or replacing the coarse-graining map need not define nested relaxations; every expected monotonic relation must therefore be stated and tested rather than assumed.
 
@@ -123,7 +150,7 @@ If the `D = 7` saturation gap remains above `1e-5`, attempt coarse-grainer optim
 
 ## Stage J1 — 1D J1-J2 chain
 
-This stage starts only after the 1D Heisenberg hybrid pipeline passes its `N = 50` gate.
+This stage starts only after the 1D Heisenberg hybrid pipeline passes its finite-size `N = 50` gate.
 
 1. Create `scripts/j1j2_1d/` with its own Hamiltonian convention, reference values, VUMPS coarse-grainers, and result notes.
 2. Use the Majumdar-Ghosh point `J2/J1 = 0.5` as the exact end-to-end anchor.
@@ -154,19 +181,20 @@ This stage starts only after the 2D Heisenberg coarse-graining gate passes. The 
 
 ## Success, hope, and pivot signals
 
-**Success signal.** The hybrid relaxation reaches 200 spins within `1e-5`, with a documented accuracy-per-cost improvement over dense compressed-LTI and structured NPA baselines.
+**Success signal.** The hybrid relaxation meets the Stage H0 target contract at 200 spins within `1e-5`, with a documented accuracy-per-cost improvement over compressed-LTI and structured NPA baselines.
 
-**Hope signal.** The hybrid constraints tighten the bound reproducibly and symmetry materially lowers the block sizes, but the 200-spin point exceeds local resources. This supports a cluster run or a focused method report.
+**Hope signal.** The finite-size formulation certifies the smaller ladder, the hybrid constraints tighten the bound reproducibly, and symmetry materially lowers the block sizes, but the 200-spin point exceeds local resources. This supports a cluster run or a focused method report.
 
 **Pivot signal.** Symmetry-aware compression does not reduce practical cost, no tested NPA strengthening improves the bound beyond solver noise, or the `N = 50` comparison shows no advantage over the parent methods. In that case, stop the scale ladder and report the negative result or switch to optimized coarse-graining maps.
 
 ## Immediate backlog
 
-1. Add PSD block-inventory diagnostics to the current 1D compressed-LTI builder.
-2. Create `scripts/heisenberg1d/symmetry_probe.jl`.
-3. Validate a symmetry-preserving VUMPS coarse-grainer without regressing the two-site `Float64` requirement.
-4. Compare dense and symmetry-aware `D = 4, n = 4` solves in a new dated result folder.
-5. Decide whether to continue the symmetry path using the H1 gates above.
+1. Complete the Stage H0 derivation and record the finite-size target contract.
+2. Add PSD block-inventory diagnostics to the current infinite-chain compressed-LTI builder.
+3. Create `scripts/heisenberg1d/symmetry_probe.jl`.
+4. Validate a symmetry-preserving VUMPS coarse-grainer without regressing the two-site `Float64` requirement.
+5. Compare dense and symmetry-aware `D = 4, n = 4` solves in a new dated result folder.
+6. Decide whether to continue the symmetry path using the H1 gates above.
 
 ## Key references
 

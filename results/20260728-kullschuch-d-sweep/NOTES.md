@@ -11,15 +11,17 @@ All new coarse-grainers converged with the existing 2-site `Float64` setup (`tol
 - `D = 6`: `E/N = -0.442495`, variational gap `6.52e-4`, `||B|| = 6.8e-13`
 - `D = 7`: `E/N = -0.442648`, variational gap `4.99e-4`, `||B|| = 7.5e-13`
 
-The cached tensors live in `scripts/vumps_mps.jls`, with a machine-readable summary in `scripts/vumps_summary.json`.
+The cached tensors live in `artifacts/coarse_grainers/heisenberg1d/vumps_mps.jls`, with a machine-readable summary in `artifacts/coarse_grainers/heisenberg1d/vumps_summary.json`.
 
 ## Compressed-LTI cost probe
 
 Certified points obtained in this folder:
 
-- `D = 4`, `n = 4` super-spins (`8` physical spins): `E = -0.456387`, gap `1.324e-2`, `OPTIMAL`, `16.2 s`
-- `D = 4`, `n = 6` super-spins (`12` physical spins): `E = -0.448952`, gap `5.805e-3`, `OPTIMAL`, `211.9 s`
-- `D = 5`, `n = 4` super-spins (`8` physical spins): `E = -0.456387`, gap `1.324e-2`, `OPTIMAL`, `162.8 s`
+- `D = 4`, `n = 4` super-spins (`8` physical sites of constraint support): `E = -0.456387`, gap `1.324e-2`, `OPTIMAL`, `16.2 s`
+- `D = 4`, `n = 6` super-spins (`12` physical sites of constraint support): `E = -0.448952`, gap `5.805e-3`, `OPTIMAL`, `211.9 s`
+- `D = 5`, `n = 4` super-spins (`8` physical sites of constraint support): `E = -0.456387`, gap `1.324e-2`, `OPTIMAL`, `162.8 s`
+
+The legacy `physical_n` fields in this run's JSON mean `2n` physical sites of local-constraint support. They do not describe a finite `2n`-spin Hamiltonian: the objective is still the energy density of an infinite translation-invariant chain.
 
 All certified points remain below the Bethe ansatz reference `e0 = 1/4 - ln 2`.
 

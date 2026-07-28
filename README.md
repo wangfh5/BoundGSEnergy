@@ -28,8 +28,8 @@ registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219)
     Kull–Schuch Fig. 2b: bounds below the Bethe e₀ at all n, monotone,
     saturation plateaus 4.69e-3 (D=2) and 2.01e-3 (D=3).
   - `20260728-kullschuch-d-sweep/` — higher-D follow-up: VUMPS converged at
-    D = 4, 5, 6, 7; compressed-LTI remained OPTIMAL for D=4 at 8 and 12
-    physical spins and for D=5 at 8 physical spins, but runtime/RAM rose
+    D = 4, 5, 6, 7; compressed-LTI remained OPTIMAL for D=4 at 8- and 12-site
+    constraint support and for D=5 at 8-site support, but runtime/RAM rose
     sharply before the paper's n_eff regime.
   - `20260727-183425-wang2026-table8-heisenberg2d/` — Table 8 run
     (`run.json` + self-contained `report.html`).
