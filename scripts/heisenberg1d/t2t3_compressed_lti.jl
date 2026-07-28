@@ -12,6 +12,7 @@ const E0 = 1/4 - log(2)
 const DEFAULT_DS = [2, 3]
 const DEFAULT_RUN_SUFFIX = "kullschuch-mve"
 const CLAIMED_DIGITS = 6
+const COARSE_GRAINER_DIR = normpath(joinpath(@__DIR__, "..", "..", "artifacts", "coarse_grainers", "heisenberg1d"))
 
 parse_int_list(spec::AbstractString) = [parse(Int, strip(x)) for x in split(spec, ",") if !isempty(strip(x))]
 
@@ -421,8 +422,8 @@ end
 
 function main(args)
     Ds, ns_by_D, run_name, resume, silent = parse_args(args)
-    psis = deserialize(joinpath(@__DIR__, "vumps_mps.jls"))
-    summary_path = joinpath(@__DIR__, "vumps_summary.json")
+    psis = deserialize(joinpath(COARSE_GRAINER_DIR, "vumps_mps.jls"))
+    summary_path = joinpath(COARSE_GRAINER_DIR, "vumps_summary.json")
     vumps_summary = isfile(summary_path) ? JSON.parsefile(summary_path) : Dict{String, Any}()
     rundir = joinpath("results", run_name)
     mkpath(joinpath(rundir, "figs"))

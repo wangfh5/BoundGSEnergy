@@ -10,18 +10,19 @@ registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219)
 
 ## What is here
 
-- `scripts/` — all runnable code:
-  - `t1_vumps.jl` — VUMPS uniform-MPS coarse-grainer for the 1D Heisenberg
+- `scripts/` — runnable code grouped by model:
+  - `heisenberg1d/t1_vumps.jl` — VUMPS uniform-MPS coarse-grainer for the 1D Heisenberg
     chain (MPSKit), parameterized over bond dimensions. The no-argument run is
     the bounded D = 2, 3 baseline; larger D sweeps require explicit `--Ds=...`.
-  - `t2t3_compressed_lti.jl` — the Kull–Schuch compressed-LTI relaxation
+  - `heisenberg1d/t2t3_compressed_lti.jl` — the Kull–Schuch compressed-LTI relaxation
     (PRX 14, 021008, Sec. II, Eq. 14) in the super-spin formulation,
     JuMP + Mosek, with dated result folders, coarse-grainer fingerprints, and
     atomic incremental JSON writes.
-  - `heisenberg2d_sdp_table8.jl`, `heisenberg2d_sdp_l4_sweep.jl` — the
+  - `heisenberg2d/heisenberg2d_sdp_table8.jl`, `heisenberg2d/heisenberg2d_sdp_l4_sweep.jl` — the
     precursor reproduction of arXiv:2604.01555 Table 8 (structured NPA,
     QMBCertify.jl): certified lower bounds for the 2D square-lattice
     Heisenberg model, L = 4, 6, 8.
+- `artifacts/coarse_grainers/` — reusable coarse-graining tensors and convergence summaries, grouped by model.
 - `results/` — run artifacts (JSON numbers + figures):
   - `20260727-kullschuch-mve/` — compressed-LTI reproduction of
     Kull–Schuch Fig. 2b: bounds below the Bethe e₀ at all n, monotone,
@@ -46,15 +47,15 @@ registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219)
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.instantiate()'   # pinned Manifest
-julia --project=. scripts/t1_vumps.jl                 # bounded D = 2, 3 baseline
-julia --project=. scripts/t2t3_compressed_lti.jl      # bounded D = 2, 3 ladder
+julia --project=. scripts/heisenberg1d/t1_vumps.jl                 # bounded D = 2, 3 baseline
+julia --project=. scripts/heisenberg1d/t2t3_compressed_lti.jl      # bounded D = 2, 3 ladder
 ```
 
 Higher-D probes are explicit:
 
 ```bash
-julia --project=. scripts/t1_vumps.jl --Ds=4,5,6,7
-julia --project=. scripts/t2t3_compressed_lti.jl --Ds=4,5 --ns=4,6 --run-name=20260728-kullschuch-d-sweep
+julia --project=. scripts/heisenberg1d/t1_vumps.jl --Ds=4,5,6,7
+julia --project=. scripts/heisenberg1d/t2t3_compressed_lti.jl --Ds=4,5 --ns=4,6 --run-name=20260728-kullschuch-d-sweep
 ```
 
 Mosek needs an academic license at `~/mosek/mosek.lic` (free:
@@ -68,7 +69,7 @@ https://www.mosek.com/products/academic-licenses/).
 - [x] MVE: Kull–Schuch compressed-LTI relaxation, Heisenberg chain,
       Fig. 2b behavior reproduced (D = 2, 3)
 - [x] VUMPS coarse-grainers extended to D = 4, 5, 6, 7 (all converged with
-      2-site Float64 uMPS; see `scripts/vumps_summary.json`)
+      2-site Float64 uMPS; see `artifacts/coarse_grainers/heisenberg1d/vumps_summary.json`)
 - [ ] #49 rung 1: 1D Heisenberg, 200 spins, 1e-5 accuracy (needs D ≳ 7
       and/or coarse-grainer optimization; current local compressed-LTI cost
       wall appears already near D=4, n=6 and D=5, n=4)

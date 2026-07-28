@@ -1,4 +1,4 @@
-# L=4 setting sweep: which knob lifts the SDP bound from the old column
+# L=4 setting sweep for the square-lattice Heisenberg model: which knob lifts the SDP bound from the old column
 # (-0.703051) toward the paper's new Table 8 value (-0.701783)?
 # Baseline = official 2D example (d=4, rdm=0, pso=0, lso=0, extra=0, SU2 off).
 

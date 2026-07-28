@@ -9,6 +9,7 @@ const E0_EXACT = 1/4 - log(2)   # Bethe ansatz, H = sum S_i . S_{i+1}, J = 1
 const DEFAULT_DS = [2, 3]
 const DEFAULT_TOL = 1e-12
 const DEFAULT_MAXITER = 400
+const COARSE_GRAINER_DIR = normpath(joinpath(@__DIR__, "..", "..", "artifacts", "coarse_grainers", "heisenberg1d"))
 
 parse_int_list(spec::AbstractString) = [parse(Int, strip(x)) for x in split(spec, ",") if !isempty(strip(x))]
 
@@ -48,16 +49,17 @@ function atomic_write_json(path, value)
 end
 
 function write_outputs(psis, summary)
-    atomic_serialize(joinpath(@__DIR__, "vumps_mps.jls"), psis)
-    atomic_write_json(joinpath(@__DIR__, "vumps_summary.json"), summary)
+    mkpath(COARSE_GRAINER_DIR)
+    atomic_serialize(joinpath(COARSE_GRAINER_DIR, "vumps_mps.jls"), psis)
+    atomic_write_json(joinpath(COARSE_GRAINER_DIR, "vumps_summary.json"), summary)
 end
 
 function main(args)
     Ds, tol, maxiter = parse_args(args)
     L = 2   # 2-site unit cell: AFM Néel period; VUMPS is far better conditioned than 1-site
     H = heisenberg_XXX(Float64, Trivial, InfiniteChain(L); spin=1//2)
-    psis_path = joinpath(@__DIR__, "vumps_mps.jls")
-    summary_path = joinpath(@__DIR__, "vumps_summary.json")
+    psis_path = joinpath(COARSE_GRAINER_DIR, "vumps_mps.jls")
+    summary_path = joinpath(COARSE_GRAINER_DIR, "vumps_summary.json")
     psis = isfile(psis_path) ? deserialize(psis_path) : Dict{Int, Any}()
     summary = isfile(summary_path) ? JSON.parsefile(summary_path) : Dict(
         "exact_energy" => E0_EXACT,

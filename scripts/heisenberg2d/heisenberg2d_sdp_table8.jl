@@ -1,7 +1,7 @@
 # Reproduction of arXiv:2604.01555 Table 8 / Fig. 7 (beginner tier)
 # Certified SDP lower bounds on E0/N, square-lattice AFM Heisenberg (PBC), L = 4, 6, 8.
 # Settings follow the paper's official 2D example: d = 4, rdm/pso/lso = 0, extra = 0.
-# Usage: julia --project=. scripts/heisenberg2d_sdp_table8.jl <run-dir>
+# Usage: julia --project=. scripts/heisenberg2d/heisenberg2d_sdp_table8.jl <run-dir>
 
 using QMBCertify
 using JSON
