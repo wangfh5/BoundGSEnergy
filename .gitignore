@@ -1,0 +1,37 @@
+.raw/
+.figures/
+*.tmp
+
+# Managed by ion
+.agents/skills/ion-cli
+.claude/skills/ion-cli
+
+# Managed by ion
+.agents/templates/AGENTS.md.upstream
+CLAUDE.md
+.agents/skills/agents-update
+.claude/skills/agents-update
+.agents/skills/method-polyopt
+.claude/skills/method-polyopt
+.agents/skills/using-qmbcertify
+.claude/skills/using-qmbcertify
+.agents/skills/using-nctssos
+.claude/skills/using-nctssos
+.agents/skills/using-mpskit
+.claude/skills/using-mpskit
+.agents/skills/using-itensors
+.claude/skills/using-itensors
+.agents/skills/solve
+.claude/skills/solve
+.agents/skills/using-slurm
+.claude/skills/using-slurm
+.agents/skills/download-ref
+.claude/skills/download-ref
+.agents/skills/report
+.claude/skills/report
+.agents/skills/cross-method-check
+.claude/skills/cross-method-check
+.agents/skills/survey
+.claude/skills/survey
+.agents/skills/brainstorm-ideas
+.claude/skills/brainstorm-ideas

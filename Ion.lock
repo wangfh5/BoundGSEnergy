@@ -1,0 +1,100 @@
+[[skill]]
+name = "brainstorm-ideas"
+source = "https://github.com/QuantumBFS/sci-brain.git"
+kind = "git"
+path = "skills/brainstorm-ideas"
+commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
+checksum = "sha256:4020aa3aef1434e45d3a924fe446840d65bd9fde4c2ef5ee3faa87a4844cabd0"
+
+[[skill]]
+name = "cross-method-check"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/cross-method-check"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:7af04cae320e967a84eb5eb7ed3d69790027c736db7d856713c959041d82e617"
+
+[[skill]]
+name = "download-ref"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/download-ref"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:47e4100427700b14820873d8e828d6f278d8a647970ed75013f72d8ff449b3ba"
+
+[[skill]]
+name = "method-polyopt"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/method-polyopt"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:766460c93bfb31f376a635485c2c8f8b73f952a610cb2103331827c226034578"
+
+[[skill]]
+name = "report"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/report"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:0f6ffd2555a8a72cb262196c5d0f1d54bd3d0bea0afc828758b6583bab488f28"
+
+[[skill]]
+name = "solve"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/solve"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:25b6c7027b6f3cde3263578f84e1627990b9c8dd6be939588427081337702a34"
+
+[[skill]]
+name = "survey"
+source = "https://github.com/QuantumBFS/sci-brain.git"
+kind = "git"
+path = "skills/survey"
+commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
+checksum = "sha256:0cfab5e37c0a3b127f9d93ccd820bb4631ece0a7fd9c2301a1e663617c083375"
+
+[[skill]]
+name = "using-itensors"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/using-itensors"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:d0b32523abe7ffe84579fcab7794899d3042a0dea2abc98d48a336daf06790e4"
+
+[[skill]]
+name = "using-mpskit"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/using-mpskit"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:36722a5c7b41a08f9e554933fad56f41ba60abd6022c7b68e4482f81f233fbfe"
+
+[[skill]]
+name = "using-nctssos"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/using-nctssos"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:3633b934d3118aa9027766a50945d07c935d7ceaa1990620291446a1627bf432"
+
+[[skill]]
+name = "using-qmbcertify"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/using-qmbcertify"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:530bd53898ace03172e4738a07e986bf4a2622f108122f26afc535945ff39f22"
+
+[[skill]]
+name = "using-slurm"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/using-slurm"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:ff081b97fe10a727693390c61375bef53646fb92f3037c826bae2e8e74eb39c4"
+
+[agents]
+template = "builtin:julia"
+checksum = "sha256:b292f62661128c79f2f485110076bf42beb1168476c9e388ed1888461dbc3745"
+updated-at = "2026-07-28T01:07:43Z"

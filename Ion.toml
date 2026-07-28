@@ -1,0 +1,23 @@
+[skills]
+ion-cli = { type = "local" }
+agents-update = { type = "local" }
+method-polyopt = { source = "QuantumBFS/quantum.harness/skills/method-polyopt" }
+using-qmbcertify = { source = "QuantumBFS/quantum.harness/skills/using-qmbcertify" }
+using-nctssos = { source = "QuantumBFS/quantum.harness/skills/using-nctssos" }
+using-mpskit = { source = "QuantumBFS/quantum.harness/skills/using-mpskit" }
+using-itensors = { source = "QuantumBFS/quantum.harness/skills/using-itensors" }
+solve = { source = "QuantumBFS/quantum.harness/skills/solve" }
+using-slurm = { source = "QuantumBFS/quantum.harness/skills/using-slurm" }
+download-ref = { source = "QuantumBFS/quantum.harness/skills/download-ref" }
+report = { source = "QuantumBFS/quantum.harness/skills/report" }
+cross-method-check = { source = "QuantumBFS/quantum.harness/skills/cross-method-check" }
+survey = { source = "QuantumBFS/sci-brain/skills/survey" }
+brainstorm-ideas = { source = "QuantumBFS/sci-brain/skills/brainstorm-ideas" }
+
+[options]
+
+[options.targets]
+claude = ".claude/skills"
+
+[agents]
+template = "builtin:julia"

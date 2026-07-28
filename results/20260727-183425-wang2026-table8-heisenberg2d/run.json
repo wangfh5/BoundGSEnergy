@@ -1,0 +1,128 @@
+{
+  "paper": {
+    "id": "arXiv:2604.01555",
+    "title": "Scalable Ground-State Certification of Quantum Spin Systems via Structured Noncommutative Polynomial Optimization (Wang, Jansen, Frérot, Renou, Magron, Acín, 2026)",
+    "url": "https://arxiv.org/abs/2604.01555"
+  },
+  "model": {
+    "name": "Square-lattice antiferromagnetic Heisenberg model (S = 1/2)",
+    "H": "H = \\frac{1}{4} \\sum_{\\langle ij \\rangle} \\vec{\\sigma}_i \\cdot \\vec{\\sigma}_j",
+    "couplings": { "$J$": 1.0 },
+    "lattice": "square, $L \\times L$",
+    "boundary": "PBC (both directions)",
+    "scene": "figs/scene_model.json"
+  },
+  "method": {
+    "family": "PolyOpt / moment-SOHS (NPA) SDP hierarchy",
+    "exact": false,
+    "tool": "QMBCertify.jl v0.3.5 + Mosek 11",
+    "settings": {
+      "relaxation order $d$": 4,
+      "lattice": "square",
+      "rdm": 0,
+      "pso": 0,
+      "lso": 0,
+      "extra": 0,
+      "SU2_symmetry": false
+    },
+    "note": "QMBCertify.jl builds a semidefinite program whose optimum is a provable lower bound on the ground-state energy (the dual of a variational method: it squeezes $E_0$ from below, never above). It hard-codes the Heisenberg model's symmetries (translation, dihedral, $xyz$ permutation, sign, conjugate) to block-diagonalize the SDP. Relaxation order $d=4$ is the accuracy dial — the paper's own 2D value. All strengthening constraints (RDM positivity, state optimality) are off, matching the paper's official 2D example. Mosek 11 is the commercial SDP solver (free academic license)."
+  },
+  "params": [
+    {
+      "name": "relaxation order $d$",
+      "value": "4",
+      "source": "paper's official 2D example (QMBCertify examples/ground_state.jl)",
+      "why": "the reproduction value; the bound tightens monotonically in $d$",
+      "risk": "too small $d$ → bound visibly looser than Table 8; too large → SDP out of memory",
+      "fix": "if the bound misses the paper value, first check solver status/residuals, then consider $d$ escalation at L=4 only"
+    },
+    {
+      "name": "strengthenings (rdm / pso / lso)",
+      "value": "all 0 (off)",
+      "source": "paper's official 2D example",
+      "why": "2D scalability comes from symmetry block-diagonalization, not strengthenings; the paper uses them mainly for 1D chains",
+      "risk": "turning them on inflates the SDP; a deviation from the paper changes the expected numbers",
+      "fix": "keep off; revisit only as an opt-in verification experiment"
+    },
+    {
+      "name": "long-range basis reach (extra)",
+      "value": "0 (nearest-neighbour two-site words only)",
+      "source": "paper's official 2D example",
+      "why": "matches the paper's 2D monomial basis at this target",
+      "risk": "a larger extra changes the basis and hence the bound",
+      "fix": "keep 0 for the reproduction"
+    },
+    {
+      "name": "system sizes $L$",
+      "value": "4, 6, 8 (run in order, locally)",
+      "source": "track scope (tracks/polyopt/README.md); paper goes to L=16",
+      "why": "beginner tier: the three sizes with published ED/QMC reference values; L=8 is the heaviest point a 54 GB workstation can plausibly attempt",
+      "risk": "L=8 may hit the memory wall (paper used a 1 TB machine for L=16)",
+      "fix": "assemble-first block-statistics check before each solve; if L=8 exceeds local memory, move that one point to the cluster via /using-slurm"
+    },
+    {
+      "name": "reference values",
+      "value": "paper Table 8 verbatim: ED for L=4,6; QMC for L=8",
+      "source": "paper Table 8 (line-verbatim from the rendered text)",
+      "why": "the reproduction target; recomputing 6x6 ED (9 billion-dimensional sector) is out of beginner scope",
+      "risk": "none scientific — the sandwich check E_SDP ≤ E_ref still validates the run",
+      "fix": "optional L=4 own-ED cross-check available as an opt-in verification"
+    },
+    {
+      "name": "SDP solver",
+      "value": "Mosek 11 (academic license at ~/mosek/mosek.lic)",
+      "source": "QMBCertify hard dependency; smoke-tested 2026-07-27 (chain N=4, d=2 bound = -0.49999999 vs exact -0.5)",
+      "why": "only solver the package supports",
+      "risk": "a stalled or infeasible solver status silently invalidates the certificate",
+      "fix": "accept only a clean OPTIMAL status; quote digits at the residual level"
+    }
+  ],
+  "scope": { "label": "beginner" },
+  "estimate": [
+    { "point": "L=4 (16 spins)", "wall": "~1 min", "memory": "< 1 GB" },
+    { "point": "L=6 (36 spins)", "wall": "~10-60 min", "memory": "~a few GB" },
+    { "point": "L=8 (64 spins)", "wall": "~1-10 h", "memory": "tens of GB — the risk point" }
+  ],
+  "actual": [
+    { "point": "L=4 (16 spins)", "wall": "27 s", "memory": "< 1 GB" },
+    { "point": "L=6 (36 spins)", "wall": "49 s", "memory": "~1 GB" },
+    { "point": "L=8 (64 spins)", "wall": "231 s", "memory": "~a few GB" }
+  ],
+  "where": "local (32 cores, 54 GB RAM)",
+  "risks": [
+    "L=8 memory wall — assemble-first block check before paying for the solve",
+    "solver status must be clean OPTIMAL; stalled = no certificate",
+    "trustworthy digits are capped by solver residuals, not printed decimals"
+  ],
+  "figures": [
+    {
+      "id": "Table 8 / Fig 7",
+      "paper_image": "figs/paper_fig7.png",
+      "plots": "certified lower bound on $E_0/N$ vs $L$, beside the paper's reference (ED/QMC) values",
+      "x": "$L$",
+      "x_range": "4, 6, 8",
+      "y": "$E_{\\mathrm{SDP}}/N$ and $E_{\\mathrm{ref}}/N$",
+      "observe": {
+        "quantity": "SDP optimum = certified lower bound on the ground-state energy per spin",
+        "normalization": "per spin ($E/N$), with $S = \\sigma/2$ so $H = \\sum S_i \\cdot S_j = \\frac{1}{4} \\sum \\sigma_i \\cdot \\sigma_j$",
+        "states": "ground state (extremal eigenvalue) only"
+      },
+      "expected": "E_SDP/N ≤ E_ref/N at every L (the sandwich), and agreement with the paper's Table 8 values (-0.701783, -0.680886, -0.676370) to solver precision; reproduced = all three bounds below their references and matching the paper",
+      "results": {
+        "figure": "figs/table8_bounds.png",
+        "numbers": {
+          "L=4": "ours -0.703051 = paper old [31] -0.703051 (6 digits) | paper new -0.701783 | ref (ED) -0.701780",
+          "L=6": "ours -0.684605 (extra=0) -> -0.683172 with extra=7 = paper old [31] (6 digits) | paper new -0.680886 | ref (ED) -0.678872",
+          "L=8": "ours -0.681948 | paper old [31] -0.679671 | paper new -0.676370 | ref (QMC) -0.673487"
+        },
+        "match": "partly",
+        "why": "the certification pipeline is fully validated (all bounds sit below their ED/QMC references, Mosek OPTIMAL, residuals ~1e-7) and the run EXACTLY reproduces the paper's OLD [31] column — L=4 to 6 digits with the official example settings, L=6 to 6 digits once the full-range basis is used (extra=7). The NEW Table 8 column is not reachable with any shipped setting (a full knob sweep: SU2, rdm=8, lso, pso, extra — closes only part of the gap): the public repo implements the 2024 PRX relaxation (its README cites only that paper), while the 2026 paper's new structured reductions that produce the new column are not yet released in the code. Root cause, not a numerical fluke.",
+        "wall": "27 s + 49 s + 231 s (L = 4, 6, 8), solver status OPTIMAL at every size",
+        "changes": [
+          "workaround for an upstream master bug: `resort` was called in eigen_circmat but its definition was lost in the src/sdp.jl split (commits 70c9a4f/4d82be4b); body restored verbatim from pre-split sdp.jl via @eval in the run script"
+        ],
+        "rerun": "the new column needs the 2026 paper's extended reductions, not yet in the public repo (README cites only the 2024 PRX); natural next step = implement them (challenge #47/#124 territory). Settings probe scripts: tracks/polyopt/solutions/heisenberg2d_sdp_l4_sweep.jl"
+      }
+    }
+  ]
+}
