@@ -79,18 +79,32 @@ function point_key(D, n)
     "D$(D)-n$(n)"
 end
 
+function take_optional!(entry, key)
+    haskey(entry, key) || return nothing
+    value = entry[key]
+    delete!(entry, key)
+    value
+end
+
 function migrate_result_schema!(results)
     for (key, entry) in results
         m = match(r"^D(\d+)-n(\d+)$", key)
         isnothing(m) && continue
         entry isa AbstractDict || error("cached point $key is not a result record")
-        expected_support = 2 * parse(Int, m.captures[2])
-        legacy_support = pop!(entry, "physical_n", nothing)
+        expected_n_super = parse(Int, m.captures[2])
+        expected_support = 2 * expected_n_super
+        legacy_support = take_optional!(entry, "physical_n")
         isnothing(legacy_support) || legacy_support == expected_support ||
             error("cached point $key has physical_n=$legacy_support, expected $expected_support")
+        legacy_n_super = take_optional!(entry, "super_n")
+        isnothing(legacy_n_super) || legacy_n_super == expected_n_super ||
+            error("cached point $key has super_n=$legacy_n_super, expected $expected_n_super")
         support_sites = get!(entry, "support_sites", expected_support)
         support_sites == expected_support ||
             error("cached point $key has support_sites=$support_sites, expected $expected_support")
+        n_super = get!(entry, "n_super", expected_n_super)
+        n_super == expected_n_super ||
+            error("cached point $key has n_super=$n_super, expected $expected_n_super")
         get(entry, "system_scope", SYSTEM_SCOPE) == SYSTEM_SCOPE ||
             error("cached point $key belongs to a different system scope")
         isnothing(get(entry, "system_size", nothing)) ||
@@ -111,7 +125,7 @@ function migrate_result_schema!(results)
 
     for entry in values(get(results, "plateaus", Dict{String, Any}()))
         entry isa AbstractDict || continue
-        legacy_support = pop!(entry, "largest_physical_n", nothing)
+        legacy_support = take_optional!(entry, "largest_physical_n")
         isnothing(legacy_support) || get!(entry, "largest_support_sites", legacy_support) == legacy_support ||
             error("cached plateau has inconsistent support")
     end
@@ -261,7 +275,7 @@ function validate_cached_point(results, key, fingerprint, resume)
     true
 end
 
-function result_record(status, wall, fingerprint; support_sites, super_n, E=nothing, gap=nothing)
+function result_record(status, wall, fingerprint; support_sites, n_super, E=nothing, gap=nothing)
     rec = Dict{String, Any}(
         "status" => string(status),
         "wall" => wall,
@@ -269,7 +283,7 @@ function result_record(status, wall, fingerprint; support_sites, super_n, E=noth
         "system_scope" => SYSTEM_SCOPE,
         "system_size" => nothing,
         "support_sites" => support_sites,
-        "super_n" => super_n,
+        "n_super" => n_super,
     )
     isnothing(E) || (rec["E"] = E)
     isnothing(gap) || (rec["gap"] = gap)
@@ -554,11 +568,11 @@ function main(args)
                     flush(stdout)
                 end
                 results[key] = result_record(st, wall, fingerprint; E=E, gap=gap,
-                                             support_sites=2 * n, super_n=n)
+                                             support_sites=2 * n, n_super=n)
             else
                 println("   WARNING: non-optimal status $st at D=$D n=$n -- no certificate, skipping")
                 flush(stdout)
-                results[key] = result_record(st, wall, fingerprint; support_sites=2 * n, super_n=n)
+                results[key] = result_record(st, wall, fingerprint; support_sites=2 * n, n_super=n)
             end
             results["plateaus"] = summarize_plateaus(results)
             write_results(json_path, results)

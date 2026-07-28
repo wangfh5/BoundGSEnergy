@@ -2,29 +2,39 @@
   "D4-n4": {
     "E": -0.45638667616060474,
     "gap": 0.013239495600659457,
-    "physical_n": 8,
+    "support_sites": 8,
     "status": "OPTIMAL",
-    "super_n": 4,
+    "n_super": 4,
+    "system_scope": "infinite_translation_invariant",
+    "system_size": null,
     "wall": 16.190368175506592,
     "coarse_grainer_fingerprint": "5e3805cd97bf315e2cec4af0422d704d594adc42"
   },
   "D4-n6": {
     "E": -0.4489520041161697,
     "gap": 0.005804823556224414,
-    "physical_n": 12,
+    "support_sites": 12,
     "status": "OPTIMAL",
-    "super_n": 6,
+    "n_super": 6,
+    "system_scope": "infinite_translation_invariant",
+    "system_size": null,
     "wall": 211.9427900314331,
     "coarse_grainer_fingerprint": "5e3805cd97bf315e2cec4af0422d704d594adc42"
   },
   "LTI": {
     "4": {
       "E": -0.5000000000609721,
-      "status": "OPTIMAL"
+      "status": "OPTIMAL",
+      "support_sites": 4,
+      "system_scope": "infinite_translation_invariant",
+      "system_size": null
     },
     "6": {
       "E": -0.46712927295222867,
-      "status": "OPTIMAL"
+      "status": "OPTIMAL",
+      "support_sites": 6,
+      "system_scope": "infinite_translation_invariant",
+      "system_size": null
     }
   },
   "meta": {
@@ -44,7 +54,10 @@
     },
     "resume": true,
     "run_name": "20260728-kullschuch-d-sweep",
+    "schema_version": 2,
     "silent": true,
+    "system_scope": "infinite_translation_invariant",
+    "system_size": null,
     "vumps_summary": {
       "Ds_requested": [
         4,
@@ -85,13 +98,13 @@
   "plateaus": {
     "D4": {
       "best_gap_seen": 0.005804823556224414,
-      "largest_physical_n": 12,
+      "largest_support_sites": 12,
       "largest_super_n": 6,
       "last_gap": 0.005804823556224414
     },
     "D5": {
       "best_gap_seen": 0.013239495554627168,
-      "largest_physical_n": 8,
+      "largest_support_sites": 8,
       "largest_super_n": 4,
       "last_gap": 0.013239495554627168
     }
@@ -99,9 +112,11 @@
   "D5-n4": {
     "E": -0.45638667611457245,
     "gap": 0.013239495554627168,
-    "physical_n": 8,
+    "support_sites": 8,
     "status": "OPTIMAL",
-    "super_n": 4,
+    "n_super": 4,
+    "system_scope": "infinite_translation_invariant",
+    "system_size": null,
     "wall": 162.81368494033813,
     "coarse_grainer_fingerprint": "8f351d9018df3224f593915ce68618c0a75e70fb"
   }
