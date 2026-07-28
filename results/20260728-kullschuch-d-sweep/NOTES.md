@@ -6,10 +6,10 @@ This run continues the 2026-07-27 compressed-LTI MVE by extending the uniform-MP
 
 All new coarse-grainers converged with the existing 2-site `Float64` setup (`tol = 1e-12`, `maxiter = 400`):
 
-- `D = 4`: `E/N = -0.4410581979`, variational gap `2.09e-3`, `||B|| = 9.3e-13`
-- `D = 5`: `E/N = -0.4420478402`, variational gap `1.10e-3`, `||B|| = 8.2e-13`
-- `D = 6`: `E/N = -0.4424950823`, variational gap `6.52e-4`, `||B|| = 6.8e-13`
-- `D = 7`: `E/N = -0.4426482472`, variational gap `4.99e-4`, `||B|| = 7.5e-13`
+- `D = 4`: `E/N = -0.441058`, variational gap `2.09e-3`, `||B|| = 9.3e-13`
+- `D = 5`: `E/N = -0.442048`, variational gap `1.10e-3`, `||B|| = 8.2e-13`
+- `D = 6`: `E/N = -0.442495`, variational gap `6.52e-4`, `||B|| = 6.8e-13`
+- `D = 7`: `E/N = -0.442648`, variational gap `4.99e-4`, `||B|| = 7.5e-13`
 
 The cached tensors live in `scripts/vumps_mps.jls`, with a machine-readable summary in `scripts/vumps_summary.json`.
 
@@ -17,9 +17,9 @@ The cached tensors live in `scripts/vumps_mps.jls`, with a machine-readable summ
 
 Certified points obtained in this folder:
 
-- `D = 4`, `n = 4` super-spins (`8` physical spins): `E = -0.4563866762`, gap `1.324e-2`, `OPTIMAL`, `16.2 s`
-- `D = 4`, `n = 6` super-spins (`12` physical spins): `E = -0.4489520041`, gap `5.805e-3`, `OPTIMAL`, `211.9 s`
-- `D = 5`, `n = 4` super-spins (`8` physical spins): `E = -0.4563866761`, gap `1.324e-2`, `OPTIMAL`, `162.8 s`
+- `D = 4`, `n = 4` super-spins (`8` physical spins): `E = -0.456387`, gap `1.324e-2`, `OPTIMAL`, `16.2 s`
+- `D = 4`, `n = 6` super-spins (`12` physical spins): `E = -0.448952`, gap `5.805e-3`, `OPTIMAL`, `211.9 s`
+- `D = 5`, `n = 4` super-spins (`8` physical spins): `E = -0.456387`, gap `1.324e-2`, `OPTIMAL`, `162.8 s`
 
 All certified points remain below the Bethe ansatz reference `e0 = 1/4 - ln 2`.
 

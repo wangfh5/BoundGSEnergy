@@ -6,7 +6,7 @@
 using MPSKit, MPSKitModels, TensorKit, LinearAlgebra, Serialization, Printf, JSON
 
 const E0_EXACT = 1/4 - log(2)   # Bethe ansatz, H = sum S_i . S_{i+1}, J = 1
-const DEFAULT_DS = [2, 3, 4, 5, 6, 7]
+const DEFAULT_DS = [2, 3]
 const DEFAULT_TOL = 1e-12
 const DEFAULT_MAXITER = 400
 
@@ -31,11 +31,25 @@ function parse_args(args)
     Ds, tol, maxiter
 end
 
-function write_outputs(psis, summary)
-    serialize(joinpath(@__DIR__, "vumps_mps.jls"), psis)
-    open(joinpath(@__DIR__, "vumps_summary.json"), "w") do io
-        JSON.print(io, summary, 2)
+function atomic_serialize(path, value)
+    mktemp(dirname(path)) do tmp, io
+        close(io)
+        serialize(tmp, value)
+        mv(tmp, path; force=true)
     end
+end
+
+function atomic_write_json(path, value)
+    mktemp(dirname(path)) do tmp, io
+        JSON.print(io, value, 2)
+        close(io)
+        mv(tmp, path; force=true)
+    end
+end
+
+function write_outputs(psis, summary)
+    atomic_serialize(joinpath(@__DIR__, "vumps_mps.jls"), psis)
+    atomic_write_json(joinpath(@__DIR__, "vumps_summary.json"), summary)
 end
 
 function main(args)
@@ -65,7 +79,7 @@ function main(args)
         psi0 = InfiniteMPS(Float64, fill(physicalspace(H, 1), L), fill(ComplexSpace(D), L))
         ok = false
         record = Dict{String, Any}("D" => D)
-        delete!(psis, D)
+        had_cached = haskey(psis, D)
         try
             psi, envs, delta = find_groundstate(psi0, H, VUMPS(; tol=tol, maxiter=maxiter))
             E = real(expectation_value(psi, H, envs) / L)   # energy density per site
@@ -91,6 +105,7 @@ function main(args)
             println("   WARNING: VUMPS failed at D=$D: $(record["error"])")
             flush(stdout)
         end
+        record["kept_cached"] = had_cached && !ok
         record["saved"] = ok
         summary["runs"]["D$D"] = record
         write_outputs(psis, summary)

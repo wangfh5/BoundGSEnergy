@@ -5,7 +5,8 @@
     "physical_n": 8,
     "status": "OPTIMAL",
     "super_n": 4,
-    "wall": 16.190368175506592
+    "wall": 16.190368175506592,
+    "coarse_grainer_fingerprint": "5e3805cd97bf315e2cec4af0422d704d594adc42"
   },
   "D4-n6": {
     "E": -0.4489520041161697,
@@ -13,7 +14,8 @@
     "physical_n": 12,
     "status": "OPTIMAL",
     "super_n": 6,
-    "wall": 211.9427900314331
+    "wall": 211.9427900314331,
+    "coarse_grainer_fingerprint": "5e3805cd97bf315e2cec4af0422d704d594adc42"
   },
   "LTI": {
     "4": -0.5000000000609721,
@@ -40,21 +42,11 @@
     "vumps_summary": {
       "Ds_requested": [
         4,
-        5,
-        6,
-        7
+        5
       ],
       "exact_energy": -0.4431471805599453,
       "maxiter": 400,
       "runs": {
-        "D2": {
-          "D": 2,
-          "bnorm": 5.361633458870057e-13,
-          "converged": true,
-          "energy": -0.42790801041973314,
-          "gap": 0.015239170140212144,
-          "saved": true
-        },
         "D4": {
           "D": 4,
           "bnorm": 9.309413971384376e-13,
@@ -70,28 +62,19 @@
           "energy": -0.4420478402183047,
           "gap": 0.001099340341640609,
           "saved": true
-        },
-        "D6": {
-          "D": 6,
-          "bnorm": 6.774846372555805e-13,
-          "converged": true,
-          "energy": -0.4424950823092251,
-          "gap": 0.0006520982507202122,
-          "saved": true
-        },
-        "D7": {
-          "D": 7,
-          "bnorm": 7.539126073145326e-13,
-          "converged": true,
-          "energy": -0.4426482471529456,
-          "gap": 0.0004989334069996909,
-          "saved": true
         }
       },
       "tol": 1.0e-12,
       "unit_cell": 2
     },
-    "vumps_summary_path": "/home/wangfh5/code/BoundGSEnergy/scripts/vumps_summary.json"
+    "coarse_grainer_fingerprints": {
+      "2": "5fa4e8443e3d7ecc9bbccb1c3757613e07766a58",
+      "3": "3ae9d04d87e87cdca5fa5a0a70f022152e97c3df",
+      "4": "5e3805cd97bf315e2cec4af0422d704d594adc42",
+      "5": "8f351d9018df3224f593915ce68618c0a75e70fb",
+      "6": "52c179d92f23ba31460a666b0854db079b83cd90",
+      "7": "7b4efe8b10f78af13057f64f79ead8ea1709e3cd"
+    }
   },
   "plateaus": {
     "D4": {
@@ -113,6 +96,7 @@
     "physical_n": 8,
     "status": "OPTIMAL",
     "super_n": 4,
-    "wall": 162.81368494033813
+    "wall": 162.81368494033813,
+    "coarse_grainer_fingerprint": "8f351d9018df3224f593915ce68618c0a75e70fb"
   }
 }

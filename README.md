@@ -12,11 +12,12 @@ registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219)
 
 - `scripts/` — all runnable code:
   - `t1_vumps.jl` — VUMPS uniform-MPS coarse-grainer for the 1D Heisenberg
-    chain (MPSKit), parameterized over bond dimensions; current cached run
-    includes D = 2, 4, 5, 6, 7.
+    chain (MPSKit), parameterized over bond dimensions. The no-argument run is
+    the bounded D = 2, 3 baseline; larger D sweeps require explicit `--Ds=...`.
   - `t2t3_compressed_lti.jl` — the Kull–Schuch compressed-LTI relaxation
     (PRX 14, 021008, Sec. II, Eq. 14) in the super-spin formulation,
-    JuMP + Mosek, with dated result folders and resume-safe incremental JSON.
+    JuMP + Mosek, with dated result folders, coarse-grainer fingerprints, and
+    atomic incremental JSON writes.
   - `heisenberg2d_sdp_table8.jl`, `heisenberg2d_sdp_l4_sweep.jl` — the
     precursor reproduction of arXiv:2604.01555 Table 8 (structured NPA,
     QMBCertify.jl): certified lower bounds for the 2D square-lattice
@@ -45,8 +46,15 @@ registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219)
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.instantiate()'   # pinned Manifest
-julia --project=. scripts/t1_vumps.jl                 # coarse-grainer MPS
-julia --project=. scripts/t2t3_compressed_lti.jl      # compressed-LTI ladder
+julia --project=. scripts/t1_vumps.jl                 # bounded D = 2, 3 baseline
+julia --project=. scripts/t2t3_compressed_lti.jl      # bounded D = 2, 3 ladder
+```
+
+Higher-D probes are explicit:
+
+```bash
+julia --project=. scripts/t1_vumps.jl --Ds=4,5,6,7
+julia --project=. scripts/t2t3_compressed_lti.jl --Ds=4,5 --ns=4,6 --run-name=20260728-kullschuch-d-sweep
 ```
 
 Mosek needs an academic license at `~/mosek/mosek.lic` (free:

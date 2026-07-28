@@ -5,11 +5,14 @@
 
 ENV["GKSwstype"] = "100"
 
-using Serialization, LinearAlgebra, Printf, JuMP, MosekTools, Plots, JSON, Dates
+using Serialization, LinearAlgebra, Printf, JuMP, MosekTools, Plots, JSON, Dates, SHA
 using MPSKit, TensorKit   # needed only so deserialize() can resolve the saved types
 
 const E0 = 1/4 - log(2)
-const DEFAULT_DS = [2, 3, 4, 5, 6, 7]
+const DEFAULT_DS = [2, 3]
+const DEFAULT_RUN_SUFFIX = "kullschuch-mve"
+const OPTIMAL_STATUSES = (OPTIMAL,)
+const CLAIMED_DIGITS = 6
 
 parse_int_list(spec::AbstractString) = [parse(Int, strip(x)) for x in split(spec, ",") if !isempty(strip(x))]
 
@@ -30,7 +33,7 @@ end
 function parse_args(args)
     Ds = copy(DEFAULT_DS)
     ns_override = nothing
-    run_name = Dates.format(Dates.today(), "yyyymmdd") * "-kullschuch-d-sweep"
+    run_name = Dates.format(Dates.today(), "yyyymmdd") * "-" * DEFAULT_RUN_SUFFIX
     resume = true
     silent = true
     for arg in args
@@ -63,8 +66,10 @@ function ensure_run_state(rundir)
 end
 
 function write_results(json_path, results)
-    open(json_path, "w") do io
+    mktemp(dirname(json_path)) do tmp, io
         JSON.print(io, results, 2)
+        close(io)
+        mv(tmp, json_path; force=true)
     end
 end
 
@@ -78,7 +83,8 @@ function summarize_plateaus(results)
         m = match(r"^D(\d+)-n(\d+)$", key)
         isnothing(m) && continue
         entry = results[key]
-        entry["status"] in ("OPTIMAL", "ALMOST_OPTIMAL") || continue
+        entry["status"] == "OPTIMAL" || continue
+        haskey(entry, "gap") || continue
         D = parse(Int, m.captures[1])
         n = parse(Int, m.captures[2])
         push!(get!(by_D, D, Tuple{Int, Float64}[]), (n, entry["gap"]))
@@ -96,7 +102,7 @@ function summarize_plateaus(results)
     summary
 end
 
-function merge_meta!(results, Ds, ns_by_D, resume, silent, vumps_summary_path, vumps_summary, run_name)
+function merge_meta!(results, Ds, ns_by_D, resume, silent, vumps_summary, coarse_fingerprints, run_name)
     meta = get!(results, "meta", Dict{String, Any}())
     old_Ds = [Int(x) for x in get(meta, "Ds", Any[])]
     meta["run_name"] = run_name
@@ -117,10 +123,91 @@ function merge_meta!(results, Ds, ns_by_D, resume, silent, vumps_summary_path, v
     meta["ns_by_D"] = meta_ns
     meta["resume"] = resume
     meta["silent"] = silent
-    meta["vumps_summary_path"] = vumps_summary_path
     meta["vumps_summary"] = vumps_summary
+    meta["coarse_grainer_fingerprints"] = Dict(string(D) => fp for (D, fp) in pairs(coarse_fingerprints))
+    delete!(meta, "vumps_summary_path")
     results["meta"] = meta
 end
+
+function runs_compatible_for_backfill(old_summary, current_summary, D)
+    old_runs = get(old_summary, "runs", Dict{String, Any}())
+    current_runs = get(current_summary, "runs", Dict{String, Any}())
+    key = "D$D"
+    haskey(old_runs, key) || return false
+    haskey(current_runs, key) || return false
+    old_runs[key] == current_runs[key]
+end
+
+function backfill_point_fingerprints!(results, coarse_fingerprints, current_summary)
+    old_summary = get(get(results, "meta", Dict{String, Any}()), "vumps_summary", Dict{String, Any}())
+    for key in keys(results)
+        m = match(r"^D(\d+)-n(\d+)$", key)
+        isnothing(m) && continue
+        D = parse(Int, m.captures[1])
+        haskey(coarse_fingerprints, D) || continue
+        entry = results[key]
+        if !haskey(entry, "coarse_grainer_fingerprint")
+            runs_compatible_for_backfill(old_summary, current_summary, D) ||
+                error("cached point $key predates coarse-grainer fingerprints and its saved VUMPS summary does not match the current cache; choose a new --run-name or rerun with --no-resume")
+            entry["coarse_grainer_fingerprint"] = coarse_fingerprints[D]
+        end
+    end
+end
+
+function vumps_summary_subset(summary, Ds)
+    out = Dict{String, Any}(
+        "exact_energy" => get(summary, "exact_energy", E0),
+        "unit_cell" => get(summary, "unit_cell", 2),
+        "tol" => get(summary, "tol", nothing),
+        "maxiter" => get(summary, "maxiter", nothing),
+        "Ds_requested" => Ds,
+        "runs" => Dict{String, Any}(),
+    )
+    runs = get(summary, "runs", Dict{String, Any}())
+    for D in Ds
+        key = "D$D"
+        haskey(runs, key) || continue
+        out["runs"][key] = runs[key]
+    end
+    out
+end
+
+function coarse_grainer_fingerprint(psi)
+    ctx = SHA.SHA1_CTX()
+    for tensor in psi.AL
+        arr = real.(convert(Array, tensor))
+        update!(ctx, codeunits(join(string.(size(arr)), ",")))
+        update!(ctx, reinterpret(UInt8, vec(arr)))
+    end
+    bytes2hex(digest!(ctx))
+end
+
+function validate_cached_point(results, key, fingerprint, resume)
+    haskey(results, key) || return false
+    !resume && return false
+    cached = results[key]
+    cached_fp = get(cached, "coarse_grainer_fingerprint", nothing)
+    if cached_fp == fingerprint
+        return true
+    else
+        error("cached point $key uses a different coarse-grainer fingerprint; choose a new --run-name or rerun with --no-resume")
+    end
+end
+
+function result_record(status, wall, fingerprint; E=nothing, gap=nothing, physical_n=nothing, super_n=nothing)
+    rec = Dict{String, Any}(
+        "status" => string(status),
+        "wall" => wall,
+        "coarse_grainer_fingerprint" => fingerprint,
+    )
+    isnothing(physical_n) || (rec["physical_n"] = physical_n)
+    isnothing(super_n) || (rec["super_n"] = super_n)
+    isnothing(E) || (rec["E"] = E)
+    isnothing(gap) || (rec["gap"] = gap)
+    rec
+end
+
+fmt_cert(x) = @sprintf("%.*f", CLAIMED_DIGITS, x)
 
 # ---------- helpers ----------
 _zero_container(rho::AbstractArray{<:Number}, n, m) = zeros(eltype(rho), n, m)
@@ -243,7 +330,7 @@ function solve_compressed(B, n; silent=true)
     end
     optimize!(model)
     status = termination_status(model)
-    E = status in (OPTIMAL, ALMOST_OPTIMAL) ? objective_value(model) : NaN
+    E = status in OPTIMAL_STATUSES ? objective_value(model) : nothing
     E, status
 end
 
@@ -263,12 +350,13 @@ function solve_LTI(n; silent=true)
     @objective(model, Min, tr(h * rho[1]))
     optimize!(model)
     status = termination_status(model)
-    status in (OPTIMAL, ALMOST_OPTIMAL) ? objective_value(model) : NaN, status
+    status in OPTIMAL_STATUSES ? objective_value(model) : nothing, status
 end
 
 # ---------- main ----------
 function plot_results(rundir, results, Ds, lti)
-    p = plot(xscale=:log10, yscale=:log10, xlabel="n", ylabel="Delta E",
+    mkpath(joinpath(rundir, "figs"))
+    p = plot(xscale=:log10, yscale=:log10, xlabel="physical spins N", ylabel="Delta E",
              title="Compressed-LTI relaxation, Heisenberg chain",
              legend=:bottomleft, size=(800, 500))
     markers = [:circle, :square, :diamond, :utriangle, :dtriangle, :star6, :xcross]
@@ -277,17 +365,18 @@ function plot_results(rundir, results, Ds, lti)
         for key in keys(results)
             m = match(Regex("^D$(D)-n(\\d+)\$"), key)
             isnothing(m) && continue
-            results[key]["status"] in ("OPTIMAL", "ALMOST_OPTIMAL") || continue
+            results[key]["status"] == "OPTIMAL" || continue
             push!(ns, parse(Int, m.captures[1]))
         end
         sort!(unique!(ns))
         isempty(ns) && continue
         ys = [results[point_key(D, n)]["gap"] for n in ns]
-        plot!(p, 2 .* ns, ys, marker=markers[mod1(idx, length(markers))], label="compressed, D=$D")
+        plot!(p, 2 .* ns, ys, marker=markers[mod1(idx, length(markers))], markersize=8,
+              markercolor=:white, markerstrokewidth=2, label="compressed, D=$D")
     end
     if !isempty(lti)
-        lts = sort(parse.(Int, collect(keys(lti))))
-        plot!(p, lts, [E0 - lti[string(n)] for n in lts], marker=:hexagon, label="exact LTI")
+        lts = sort([parse(Int, key) for key in keys(lti) if lti[key] isa Real])
+        isempty(lts) || plot!(p, lts, [E0 - lti[string(n)] for n in lts], marker=:hexagon, label="exact LTI")
     end
     savefig(p, joinpath(rundir, "figs", "gap_vs_n.png"))
 end
@@ -295,12 +384,18 @@ end
 function main(args)
     Ds, ns_by_D, run_name, resume, silent = parse_args(args)
     psis = deserialize(joinpath(@__DIR__, "vumps_mps.jls"))
-    vumps_summary_path = joinpath(@__DIR__, "vumps_summary.json")
-    vumps_summary = isfile(vumps_summary_path) ? JSON.parsefile(vumps_summary_path) : Dict{String, Any}()
+    summary_path = joinpath(@__DIR__, "vumps_summary.json")
+    vumps_summary = isfile(summary_path) ? JSON.parsefile(summary_path) : Dict{String, Any}()
     rundir = joinpath("results", run_name)
-    results = ensure_run_state(rundir)
+    results = resume ? ensure_run_state(rundir) : Dict{String, Any}()
     json_path = joinpath(rundir, "compressed_lti.json")
-    merge_meta!(results, Ds, ns_by_D, resume, silent, vumps_summary_path, vumps_summary, run_name)
+    coarse_fingerprints = Dict{Int, String}()
+    for D in keys(psis)
+        coarse_fingerprints[D] = coarse_grainer_fingerprint(psis[D])
+    end
+    summary_subset = vumps_summary_subset(vumps_summary, Ds)
+    backfill_point_fingerprints!(results, coarse_fingerprints, summary_subset)
+    merge_meta!(results, Ds, ns_by_D, resume, silent, summary_subset, coarse_fingerprints, run_name)
 
     # helper sanity: ptrace on a product state
     a = [1.0, 0]; b = [0.0, 1, 0, 0]
@@ -317,8 +412,14 @@ function main(args)
             continue
         end
         E, st = solve_LTI(n; silent=silent)
+        if isnothing(E)
+            lti[key] = Dict("status" => string(st))
+            println("LTI physical n=$n: status $st -- no certificate, skipping")
+            flush(stdout)
+            continue
+        end
         lti[key] = E
-        @printf("LTI physical n=%2d: E = %.10f  (gap %.2e, status %s)\n", n, E, E0 - E, st)
+        @printf("LTI physical n=%2d: E = %s  (gap %.2e, status %s)\n", n, fmt_cert(E), E0 - E, st)
         flush(stdout)
         @assert E <= E0 + 1e-9
         results["LTI"] = lti
@@ -332,33 +433,34 @@ function main(args)
             continue
         end
         B = super_tensor(psis[D])
+        fingerprint = coarse_fingerprints[D]
         for n in ns_by_D[D]
             key = point_key(D, n)
-            if resume && haskey(results, key)
+            if validate_cached_point(results, key, fingerprint, resume)
                 println("Skipping cached D=$D super-n=$n"); flush(stdout)
                 continue
             end
             t0 = time()
             E, st = solve_compressed(B, n; silent=silent)
             wall = time() - t0
-            gap = E0 - E
-            @printf("D=%d super-n=%3d: E = %.10f  gap %.3e  wall %.1fs  status %s\n",
-                    D, n, E, gap, wall, st)
-            flush(stdout)
-            if !isnan(E)
+            if !isnothing(E)
+                gap = E0 - E
+                @printf("D=%d super-n=%3d: E = %s  gap %.3e  wall %.1fs  status %s\n",
+                        D, n, fmt_cert(E), gap, wall, st)
+                flush(stdout)
                 @assert E <= E0 + 1e-6 "bound ABOVE e0 at D=$D n=$n -- index bug"
+                if n == 4 && haskey(lti, "6") && lti["6"] isa Real
+                    @printf("   check: %s <= LTI(6) = %s ? %s\n",
+                            fmt_cert(E), fmt_cert(lti["6"]), E <= lti["6"] + 1e-9)
+                    flush(stdout)
+                end
+                results[key] = result_record(st, wall, fingerprint; E=E, gap=gap,
+                                             physical_n=2 * n, super_n=n)
             else
                 println("   WARNING: non-optimal status $st at D=$D n=$n -- no certificate, skipping")
                 flush(stdout)
+                results[key] = result_record(st, wall, fingerprint; physical_n=2 * n, super_n=n)
             end
-            if n == 4    # E_comp(super-4) <= E_LTI(8) <= E_LTI(6) (LTI is non-decreasing): necessary check
-                @printf("   check: %.10f <= LTI(6) = %.10f ? %s\n",
-                        E, lti["6"], E <= lti["6"] + 1e-9)
-                flush(stdout)
-            end
-            results[key] = Dict("E" => E, "gap" => gap, "wall" => wall,
-                                "status" => string(st), "physical_n" => 2 * n,
-                                "super_n" => n)
             results["plateaus"] = summarize_plateaus(results)
             write_results(json_path, results)
         end

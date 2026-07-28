@@ -1,19 +1,18 @@
 {
   "Ds_requested": [
-    4,
-    5,
-    6,
-    7
+    2,
+    3
   ],
   "exact_energy": -0.4431471805599453,
   "maxiter": 400,
   "runs": {
     "D2": {
       "D": 2,
-      "bnorm": 5.361633458870057e-13,
+      "bnorm": 5.240922908313655e-13,
       "converged": true,
-      "energy": -0.42790801041973314,
-      "gap": 0.015239170140212144,
+      "energy": -0.42790801041973237,
+      "gap": 0.015239170140212921,
+      "kept_cached": false,
       "saved": true
     },
     "D4": {
@@ -46,6 +45,15 @@
       "converged": true,
       "energy": -0.4426482471529456,
       "gap": 0.0004989334069996909,
+      "saved": true
+    },
+    "D3": {
+      "D": 3,
+      "bnorm": 6.171037052023428e-13,
+      "converged": true,
+      "energy": -0.4357838735937334,
+      "gap": 0.007363306966211902,
+      "kept_cached": false,
       "saved": true
     }
   },
