@@ -174,10 +174,10 @@ This stage starts only after the 2D Heisenberg coarse-graining gate passes. The 
 
 - Every run uses a new dated `results/<run>/` folder.
 - Long ladders write an atomic checkpoint after every `(model parameters, D, hierarchy depth, relaxation)` point.
-- Every point records solver status, certified energy when available, residual-level precision, wall time, physical size, hierarchy depth, coarse-grainer fingerprint, and relaxation settings.
+- Every point records solver status, certified energy when available, residual-level precision, wall time, `system_scope`, `system_size`, `support_sites`, `n_super`, coarse-grainer fingerprint, and relaxation settings.
 - Only a clean `OPTIMAL` status enters certified summaries, plateaus, or figures. Other statuses are retained as failed attempts without non-finite JSON values.
 - Every claimed lower bound must satisfy the best available exact or variational ceiling. A violation is an implementation error.
-- Figures show gaps only for certified points and distinguish physical size from compressed hierarchy depth.
+- Figures show gaps only for certified points and distinguish finite `system_size`, local-constraint `support_sites`, and compressed hierarchy depth `n_super`.
 
 ## Success, hope, and pivot signals
 

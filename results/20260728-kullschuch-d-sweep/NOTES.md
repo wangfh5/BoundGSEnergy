@@ -21,7 +21,7 @@ Certified points obtained in this folder:
 - `D = 4`, `n = 6` super-spins (`12` physical sites of constraint support): `E = -0.448952`, gap `5.805e-3`, `OPTIMAL`, `211.9 s`
 - `D = 5`, `n = 4` super-spins (`8` physical sites of constraint support): `E = -0.456387`, gap `1.324e-2`, `OPTIMAL`, `162.8 s`
 
-The legacy `physical_n` fields in this run's JSON mean `2n` physical sites of local-constraint support. They do not describe a finite `2n`-spin Hamiltonian: the objective is still the energy density of an infinite translation-invariant chain.
+The legacy `physical_n` fields in this committed JSON mean `2n` physical sites of local-constraint support. They do not describe a finite `2n`-spin Hamiltonian: the objective is still the energy density of an infinite translation-invariant chain. The current script migrates these fields to `support_sites` and adds explicit infinite-system scope metadata when this run is resumed.
 
 All certified points remain below the Bethe ansatz reference `e0 = 1/4 - ln 2`.
 

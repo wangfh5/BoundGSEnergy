@@ -13,6 +13,8 @@ const DEFAULT_DS = [2, 3]
 const DEFAULT_RUN_SUFFIX = "kullschuch-mve"
 const CLAIMED_DIGITS = 6
 const COARSE_GRAINER_DIR = normpath(joinpath(@__DIR__, "..", "..", "artifacts", "coarse_grainers", "heisenberg1d"))
+const RESULT_SCHEMA_VERSION = 2
+const SYSTEM_SCOPE = "infinite_translation_invariant"
 
 parse_int_list(spec::AbstractString) = [parse(Int, strip(x)) for x in split(spec, ",") if !isempty(strip(x))]
 
@@ -77,6 +79,50 @@ function point_key(D, n)
     "D$(D)-n$(n)"
 end
 
+function migrate_result_schema!(results)
+    for (key, entry) in results
+        m = match(r"^D(\d+)-n(\d+)$", key)
+        isnothing(m) && continue
+        entry isa AbstractDict || error("cached point $key is not a result record")
+        expected_support = 2 * parse(Int, m.captures[2])
+        legacy_support = pop!(entry, "physical_n", nothing)
+        isnothing(legacy_support) || legacy_support == expected_support ||
+            error("cached point $key has physical_n=$legacy_support, expected $expected_support")
+        support_sites = get!(entry, "support_sites", expected_support)
+        support_sites == expected_support ||
+            error("cached point $key has support_sites=$support_sites, expected $expected_support")
+        get(entry, "system_scope", SYSTEM_SCOPE) == SYSTEM_SCOPE ||
+            error("cached point $key belongs to a different system scope")
+        isnothing(get(entry, "system_size", nothing)) ||
+            error("cached point $key has a finite system_size in an infinite-chain run")
+        entry["system_scope"] = SYSTEM_SCOPE
+        entry["system_size"] = nothing
+    end
+
+    lti = get(results, "LTI", Dict{String, Any}())
+    for (key, entry) in lti
+        entry isa AbstractDict || continue
+        support_sites = parse(Int, key)
+        get!(entry, "support_sites", support_sites) == support_sites ||
+            error("cached LTI point $key has inconsistent support")
+        entry["system_scope"] = SYSTEM_SCOPE
+        entry["system_size"] = nothing
+    end
+
+    for entry in values(get(results, "plateaus", Dict{String, Any}()))
+        entry isa AbstractDict || continue
+        legacy_support = pop!(entry, "largest_physical_n", nothing)
+        isnothing(legacy_support) || get!(entry, "largest_support_sites", legacy_support) == legacy_support ||
+            error("cached plateau has inconsistent support")
+    end
+
+    meta = get!(results, "meta", Dict{String, Any}())
+    meta["schema_version"] = RESULT_SCHEMA_VERSION
+    meta["system_scope"] = SYSTEM_SCOPE
+    meta["system_size"] = nothing
+    results
+end
+
 function summarize_plateaus(results)
     by_D = Dict{Int, Vector{Tuple{Int, Float64}}}()
     for key in keys(results)
@@ -123,6 +169,9 @@ function merge_meta!(results, Ds, ns_by_D, resume, silent, vumps_summary, coarse
     old_Ds = [Int(x) for x in get(meta, "Ds", Any[])]
     meta["run_name"] = run_name
     meta["exact_energy"] = E0
+    meta["schema_version"] = RESULT_SCHEMA_VERSION
+    meta["system_scope"] = SYSTEM_SCOPE
+    meta["system_size"] = nothing
     meta["Ds"] = sort!(unique!(vcat(old_Ds, Ds)))
     meta_ns = Dict{String, Any}(string(k) => v for (k, v) in pairs(get(meta, "ns_by_D", Dict{String, Any}())))
     for D in Ds
@@ -212,14 +261,16 @@ function validate_cached_point(results, key, fingerprint, resume)
     true
 end
 
-function result_record(status, wall, fingerprint; E=nothing, gap=nothing, support_sites=nothing, super_n=nothing)
+function result_record(status, wall, fingerprint; support_sites, super_n, E=nothing, gap=nothing)
     rec = Dict{String, Any}(
         "status" => string(status),
         "wall" => wall,
         "coarse_grainer_fingerprint" => fingerprint,
+        "system_scope" => SYSTEM_SCOPE,
+        "system_size" => nothing,
+        "support_sites" => support_sites,
+        "super_n" => super_n,
     )
-    isnothing(support_sites) || (rec["support_sites"] = support_sites)
-    isnothing(super_n) || (rec["super_n"] = super_n)
     isnothing(E) || (rec["E"] = E)
     isnothing(gap) || (rec["gap"] = gap)
     rec
@@ -227,8 +278,13 @@ end
 
 fmt_cert(x) = @sprintf("%.*f", CLAIMED_DIGITS, x)
 
-function lti_record(status; E=nothing)
-    rec = Dict{String, Any}("status" => string(status))
+function lti_record(status, support_sites; E=nothing)
+    rec = Dict{String, Any}(
+        "status" => string(status),
+        "system_scope" => SYSTEM_SCOPE,
+        "system_size" => nothing,
+        "support_sites" => support_sites,
+    )
     isnothing(E) || (rec["E"] = E)
     rec
 end
@@ -428,6 +484,7 @@ function main(args)
     rundir = joinpath("results", run_name)
     mkpath(joinpath(rundir, "figs"))
     results = resume ? ensure_run_state(rundir) : Dict{String, Any}()
+    migrate_result_schema!(results)
     json_path = joinpath(rundir, "compressed_lti.json")
     coarse_fingerprints = Dict{Int, String}()
     for D in keys(psis)
@@ -448,20 +505,20 @@ function main(args)
     for n in [4, 6]
         key = string(n)
         if haskey(lti, key) && can_skip_lti(lti[key], resume)
-            println("Skipping cached LTI physical n=$n"); flush(stdout)
+            println("Skipping cached LTI support n=$n"); flush(stdout)
             continue
         end
         E, st = solve_LTI(n; silent=silent)
         if isnothing(E)
-            lti[key] = lti_record(st)
+            lti[key] = lti_record(st, n)
             results["LTI"] = lti
             write_results(json_path, results)
-            println("LTI physical n=$n: status $st -- no certificate, skipping")
+            println("LTI support n=$n: status $st -- no certificate, skipping")
             flush(stdout)
             continue
         end
-        lti[key] = lti_record(st; E=E)
-        @printf("LTI physical n=%2d: E = %s  (gap %.2e, status %s)\n", n, fmt_cert(E), E0 - E, st)
+        lti[key] = lti_record(st, n; E=E)
+        @printf("LTI support n=%2d: E = %s  (gap %.2e, status %s)\n", n, fmt_cert(E), E0 - E, st)
         flush(stdout)
         @assert E <= E0 + 1e-9
         results["LTI"] = lti
