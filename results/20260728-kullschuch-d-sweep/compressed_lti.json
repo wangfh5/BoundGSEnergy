@@ -1,0 +1,118 @@
+{
+  "D4-n4": {
+    "E": -0.45638667616060474,
+    "gap": 0.013239495600659457,
+    "physical_n": 8,
+    "status": "OPTIMAL",
+    "super_n": 4,
+    "wall": 16.190368175506592
+  },
+  "D4-n6": {
+    "E": -0.4489520041161697,
+    "gap": 0.005804823556224414,
+    "physical_n": 12,
+    "status": "OPTIMAL",
+    "super_n": 6,
+    "wall": 211.9427900314331
+  },
+  "LTI": {
+    "4": -0.5000000000609721,
+    "6": -0.46712927295222867
+  },
+  "meta": {
+    "Ds": [
+      4,
+      5
+    ],
+    "exact_energy": -0.4431471805599453,
+    "ns_by_D": {
+      "4": [
+        4,
+        6
+      ],
+      "5": [
+        4
+      ]
+    },
+    "resume": true,
+    "run_name": "20260728-kullschuch-d-sweep",
+    "silent": true,
+    "vumps_summary": {
+      "Ds_requested": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "exact_energy": -0.4431471805599453,
+      "maxiter": 400,
+      "runs": {
+        "D2": {
+          "D": 2,
+          "bnorm": 5.361633458870057e-13,
+          "converged": true,
+          "energy": -0.42790801041973314,
+          "gap": 0.015239170140212144,
+          "saved": true
+        },
+        "D4": {
+          "D": 4,
+          "bnorm": 9.309413971384376e-13,
+          "converged": true,
+          "energy": -0.4410581978874297,
+          "gap": 0.0020889826725155602,
+          "saved": true
+        },
+        "D5": {
+          "D": 5,
+          "bnorm": 8.236269402605017e-13,
+          "converged": true,
+          "energy": -0.4420478402183047,
+          "gap": 0.001099340341640609,
+          "saved": true
+        },
+        "D6": {
+          "D": 6,
+          "bnorm": 6.774846372555805e-13,
+          "converged": true,
+          "energy": -0.4424950823092251,
+          "gap": 0.0006520982507202122,
+          "saved": true
+        },
+        "D7": {
+          "D": 7,
+          "bnorm": 7.539126073145326e-13,
+          "converged": true,
+          "energy": -0.4426482471529456,
+          "gap": 0.0004989334069996909,
+          "saved": true
+        }
+      },
+      "tol": 1.0e-12,
+      "unit_cell": 2
+    },
+    "vumps_summary_path": "/home/wangfh5/code/BoundGSEnergy/scripts/vumps_summary.json"
+  },
+  "plateaus": {
+    "D4": {
+      "best_gap_seen": 0.005804823556224414,
+      "largest_physical_n": 12,
+      "largest_super_n": 6,
+      "last_gap": 0.005804823556224414
+    },
+    "D5": {
+      "best_gap_seen": 0.013239495554627168,
+      "largest_physical_n": 8,
+      "largest_super_n": 4,
+      "last_gap": 0.013239495554627168
+    }
+  },
+  "D5-n4": {
+    "E": -0.45638667611457245,
+    "gap": 0.013239495554627168,
+    "physical_n": 8,
+    "status": "OPTIMAL",
+    "super_n": 4,
+    "wall": 162.81368494033813
+  }
+}
