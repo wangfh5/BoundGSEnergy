@@ -11,7 +11,6 @@ using MPSKit, TensorKit   # needed only so deserialize() can resolve the saved t
 const E0 = 1/4 - log(2)
 const DEFAULT_DS = [2, 3]
 const DEFAULT_RUN_SUFFIX = "kullschuch-mve"
-const OPTIMAL_STATUSES = (OPTIMAL,)
 const CLAIMED_DIGITS = 6
 
 parse_int_list(spec::AbstractString) = [parse(Int, strip(x)) for x in split(spec, ",") if !isempty(strip(x))]
@@ -102,6 +101,22 @@ function summarize_plateaus(results)
     summary
 end
 
+function merge_vumps_summaries(old_summary, new_summary)
+    merged_runs = Dict{String, Any}(String(k) => v for (k, v) in pairs(get(old_summary, "runs", Dict{String, Any}())))
+    for (k, v) in pairs(get(new_summary, "runs", Dict{String, Any}()))
+        merged_runs[String(k)] = v
+    end
+    Ds = sort!([parse(Int, only(match(r"^D(\d+)$", key).captures)) for key in keys(merged_runs)])
+    Dict{String, Any}(
+        "exact_energy" => get(new_summary, "exact_energy", get(old_summary, "exact_energy", E0)),
+        "unit_cell" => get(new_summary, "unit_cell", get(old_summary, "unit_cell", 2)),
+        "tol" => get(new_summary, "tol", get(old_summary, "tol", nothing)),
+        "maxiter" => get(new_summary, "maxiter", get(old_summary, "maxiter", nothing)),
+        "Ds_requested" => Ds,
+        "runs" => merged_runs,
+    )
+end
+
 function merge_meta!(results, Ds, ns_by_D, resume, silent, vumps_summary, coarse_fingerprints, run_name)
     meta = get!(results, "meta", Dict{String, Any}())
     old_Ds = [Int(x) for x in get(meta, "Ds", Any[])]
@@ -123,7 +138,7 @@ function merge_meta!(results, Ds, ns_by_D, resume, silent, vumps_summary, coarse
     meta["ns_by_D"] = meta_ns
     meta["resume"] = resume
     meta["silent"] = silent
-    meta["vumps_summary"] = vumps_summary
+    meta["vumps_summary"] = merge_vumps_summaries(get(meta, "vumps_summary", Dict{String, Any}()), vumps_summary)
     meta["coarse_grainer_fingerprints"] = Dict(string(D) => fp for (D, fp) in pairs(coarse_fingerprints))
     delete!(meta, "vumps_summary_path")
     results["meta"] = meta
@@ -187,11 +202,13 @@ function validate_cached_point(results, key, fingerprint, resume)
     !resume && return false
     cached = results[key]
     cached_fp = get(cached, "coarse_grainer_fingerprint", nothing)
-    if cached_fp == fingerprint
-        return true
-    else
+    cached_fp == fingerprint || begin
         error("cached point $key uses a different coarse-grainer fingerprint; choose a new --run-name or rerun with --no-resume")
     end
+    cached["status"] == "OPTIMAL" || return false
+    haskey(cached, "E") || return false
+    haskey(cached, "gap") || return false
+    true
 end
 
 function result_record(status, wall, fingerprint; E=nothing, gap=nothing, physical_n=nothing, super_n=nothing)
@@ -208,6 +225,25 @@ function result_record(status, wall, fingerprint; E=nothing, gap=nothing, physic
 end
 
 fmt_cert(x) = @sprintf("%.*f", CLAIMED_DIGITS, x)
+
+function lti_record(status; E=nothing)
+    rec = Dict{String, Any}("status" => string(status))
+    isnothing(E) || (rec["E"] = E)
+    rec
+end
+
+function lti_entry_energy(entry)
+    entry isa Real && return nothing
+    get(entry, "status", nothing) == "OPTIMAL" || return nothing
+    get(entry, "E", nothing)
+end
+
+function can_skip_lti(entry, resume)
+    resume || return false
+    entry isa Dict{String, Any} || return false
+    get(entry, "status", nothing) == "OPTIMAL" || return false
+    haskey(entry, "E")
+end
 
 # ---------- helpers ----------
 _zero_container(rho::AbstractArray{<:Number}, n, m) = zeros(eltype(rho), n, m)
@@ -330,7 +366,7 @@ function solve_compressed(B, n; silent=true)
     end
     optimize!(model)
     status = termination_status(model)
-    E = status in OPTIMAL_STATUSES ? objective_value(model) : nothing
+    E = status == OPTIMAL ? objective_value(model) : nothing
     E, status
 end
 
@@ -350,7 +386,7 @@ function solve_LTI(n; silent=true)
     @objective(model, Min, tr(h * rho[1]))
     optimize!(model)
     status = termination_status(model)
-    status in OPTIMAL_STATUSES ? objective_value(model) : nothing, status
+    status == OPTIMAL ? objective_value(model) : nothing, status
 end
 
 # ---------- main ----------
@@ -360,6 +396,7 @@ function plot_results(rundir, results, Ds, lti)
              title="Compressed-LTI relaxation, Heisenberg chain",
              legend=:bottomleft, size=(800, 500))
     markers = [:circle, :square, :diamond, :utriangle, :dtriangle, :star6, :xcross]
+    marker_sizes = [10, 7, 10, 10, 10, 10, 10]
     for (idx, D) in enumerate(Ds)
         ns = Int[]
         for key in keys(results)
@@ -371,12 +408,13 @@ function plot_results(rundir, results, Ds, lti)
         sort!(unique!(ns))
         isempty(ns) && continue
         ys = [results[point_key(D, n)]["gap"] for n in ns]
-        plot!(p, 2 .* ns, ys, marker=markers[mod1(idx, length(markers))], markersize=8,
+        plot!(p, 2 .* ns, ys, marker=markers[mod1(idx, length(markers))],
+              markersize=marker_sizes[mod1(idx, length(marker_sizes))],
               markercolor=:white, markerstrokewidth=2, label="compressed, D=$D")
     end
     if !isempty(lti)
-        lts = sort([parse(Int, key) for key in keys(lti) if lti[key] isa Real])
-        isempty(lts) || plot!(p, lts, [E0 - lti[string(n)] for n in lts], marker=:hexagon, label="exact LTI")
+        lts = sort([parse(Int, key) for key in keys(lti) if !isnothing(lti_entry_energy(lti[key]))])
+        isempty(lts) || plot!(p, lts, [E0 - lti_entry_energy(lti[string(n)]) for n in lts], marker=:hexagon, label="exact LTI")
     end
     savefig(p, joinpath(rundir, "figs", "gap_vs_n.png"))
 end
@@ -387,6 +425,7 @@ function main(args)
     summary_path = joinpath(@__DIR__, "vumps_summary.json")
     vumps_summary = isfile(summary_path) ? JSON.parsefile(summary_path) : Dict{String, Any}()
     rundir = joinpath("results", run_name)
+    mkpath(joinpath(rundir, "figs"))
     results = resume ? ensure_run_state(rundir) : Dict{String, Any}()
     json_path = joinpath(rundir, "compressed_lti.json")
     coarse_fingerprints = Dict{Int, String}()
@@ -407,18 +446,20 @@ function main(args)
     lti = get!(results, "LTI", Dict{String, Any}())
     for n in [4, 6]
         key = string(n)
-        if resume && haskey(lti, key)
+        if haskey(lti, key) && can_skip_lti(lti[key], resume)
             println("Skipping cached LTI physical n=$n"); flush(stdout)
             continue
         end
         E, st = solve_LTI(n; silent=silent)
         if isnothing(E)
-            lti[key] = Dict("status" => string(st))
+            lti[key] = lti_record(st)
+            results["LTI"] = lti
+            write_results(json_path, results)
             println("LTI physical n=$n: status $st -- no certificate, skipping")
             flush(stdout)
             continue
         end
-        lti[key] = E
+        lti[key] = lti_record(st; E=E)
         @printf("LTI physical n=%2d: E = %s  (gap %.2e, status %s)\n", n, fmt_cert(E), E0 - E, st)
         flush(stdout)
         @assert E <= E0 + 1e-9
@@ -449,9 +490,9 @@ function main(args)
                         D, n, fmt_cert(E), gap, wall, st)
                 flush(stdout)
                 @assert E <= E0 + 1e-6 "bound ABOVE e0 at D=$D n=$n -- index bug"
-                if n == 4 && haskey(lti, "6") && lti["6"] isa Real
+                if n == 4 && haskey(lti, "6") && !isnothing(lti_entry_energy(lti["6"]))
                     @printf("   check: %s <= LTI(6) = %s ? %s\n",
-                            fmt_cert(E), fmt_cert(lti["6"]), E <= lti["6"] + 1e-9)
+                            fmt_cert(E), fmt_cert(lti_entry_energy(lti["6"])), E <= lti_entry_energy(lti["6"]) + 1e-9)
                     flush(stdout)
                 end
                 results[key] = result_record(st, wall, fingerprint; E=E, gap=gap,
