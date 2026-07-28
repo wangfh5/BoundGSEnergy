@@ -3,10 +3,124 @@
 # and the VUMPS uniform MPS as the coarse-graining map.
 # Self-checks: E(n,D) <= e0 = 1/4 - ln2; non-decreasing in n; <= E_LTI(2n physical).
 
-using Serialization, LinearAlgebra, Printf, JuMP, MosekTools, Plots, JSON
+ENV["GKSwstype"] = "100"
+
+using Serialization, LinearAlgebra, Printf, JuMP, MosekTools, Plots, JSON, Dates
 using MPSKit, TensorKit   # needed only so deserialize() can resolve the saved types
 
 const E0 = 1/4 - log(2)
+const DEFAULT_DS = [2, 3, 4, 5, 6, 7]
+
+parse_int_list(spec::AbstractString) = [parse(Int, strip(x)) for x in split(spec, ",") if !isempty(strip(x))]
+
+function default_ns_by_D(D)
+    if D <= 2
+        [4, 6, 8, 10, 15, 20, 30, 50, 80, 120]
+    elseif D == 3
+        [4, 6, 8, 10, 15, 20, 30, 50]
+    elseif D == 4
+        [4, 6, 8, 10, 15, 20, 30, 40, 50]
+    elseif D == 5
+        [4, 6, 8, 10, 15, 20, 30]
+    else
+        [4, 6, 8, 10, 15, 20]
+    end
+end
+
+function parse_args(args)
+    Ds = copy(DEFAULT_DS)
+    ns_override = nothing
+    run_name = Dates.format(Dates.today(), "yyyymmdd") * "-kullschuch-d-sweep"
+    resume = true
+    silent = true
+    for arg in args
+        if startswith(arg, "--Ds=")
+            Ds = parse_int_list(split(arg, "=", limit=2)[2])
+        elseif startswith(arg, "--ns=")
+            ns_override = parse_int_list(split(arg, "=", limit=2)[2])
+        elseif startswith(arg, "--run-name=")
+            run_name = split(arg, "=", limit=2)[2]
+        elseif arg == "--no-resume"
+            resume = false
+        elseif arg == "--debug"
+            silent = false
+        else
+            error("unknown argument: $arg")
+        end
+    end
+    sort!(unique!(Ds))
+    ns_by_D = Dict(D => (isnothing(ns_override) ? default_ns_by_D(D) : copy(ns_override)) for D in Ds)
+    Ds, ns_by_D, run_name, resume, silent
+end
+
+function ensure_run_state(rundir)
+    mkpath(joinpath(rundir, "figs"))
+    json_path = joinpath(rundir, "compressed_lti.json")
+    if isfile(json_path)
+        return JSON.parsefile(json_path)
+    end
+    Dict{String, Any}()
+end
+
+function write_results(json_path, results)
+    open(json_path, "w") do io
+        JSON.print(io, results, 2)
+    end
+end
+
+function point_key(D, n)
+    "D$(D)-n$(n)"
+end
+
+function summarize_plateaus(results)
+    by_D = Dict{Int, Vector{Tuple{Int, Float64}}}()
+    for key in keys(results)
+        m = match(r"^D(\d+)-n(\d+)$", key)
+        isnothing(m) && continue
+        entry = results[key]
+        entry["status"] in ("OPTIMAL", "ALMOST_OPTIMAL") || continue
+        D = parse(Int, m.captures[1])
+        n = parse(Int, m.captures[2])
+        push!(get!(by_D, D, Tuple{Int, Float64}[]), (n, entry["gap"]))
+    end
+    summary = Dict{String, Any}()
+    for D in sort!(collect(keys(by_D)))
+        completed = sort!(by_D[D]; by=first)
+        summary["D$D"] = Dict(
+            "largest_super_n" => completed[end][1],
+            "largest_physical_n" => 2 * completed[end][1],
+            "best_gap_seen" => minimum(last.(completed)),
+            "last_gap" => completed[end][2],
+        )
+    end
+    summary
+end
+
+function merge_meta!(results, Ds, ns_by_D, resume, silent, vumps_summary_path, vumps_summary, run_name)
+    meta = get!(results, "meta", Dict{String, Any}())
+    old_Ds = [Int(x) for x in get(meta, "Ds", Any[])]
+    meta["run_name"] = run_name
+    meta["exact_energy"] = E0
+    meta["Ds"] = sort!(unique!(vcat(old_Ds, Ds)))
+    meta_ns = Dict{String, Any}(string(k) => v for (k, v) in pairs(get(meta, "ns_by_D", Dict{String, Any}())))
+    for D in Ds
+        meta_ns[string(D)] = ns_by_D[D]
+    end
+    for key in keys(results)
+        m = match(r"^D(\d+)-n(\d+)$", key)
+        isnothing(m) && continue
+        D = m.captures[1]
+        n = parse(Int, m.captures[2])
+        ns = [Int(x) for x in get(meta_ns, D, Any[])]
+        meta_ns[D] = sort!(unique!(push!(ns, n)))
+    end
+    meta["ns_by_D"] = meta_ns
+    meta["resume"] = resume
+    meta["silent"] = silent
+    meta["vumps_summary_path"] = vumps_summary_path
+    meta["vumps_summary"] = vumps_summary
+    results["meta"] = meta
+end
 
 # ---------- helpers ----------
 _zero_container(rho::AbstractArray{<:Number}, n, m) = zeros(eltype(rho), n, m)
@@ -153,8 +267,40 @@ function solve_LTI(n; silent=true)
 end
 
 # ---------- main ----------
-function main()
+function plot_results(rundir, results, Ds, lti)
+    p = plot(xscale=:log10, yscale=:log10, xlabel="n", ylabel="Delta E",
+             title="Compressed-LTI relaxation, Heisenberg chain",
+             legend=:bottomleft, size=(800, 500))
+    markers = [:circle, :square, :diamond, :utriangle, :dtriangle, :star6, :xcross]
+    for (idx, D) in enumerate(Ds)
+        ns = Int[]
+        for key in keys(results)
+            m = match(Regex("^D$(D)-n(\\d+)\$"), key)
+            isnothing(m) && continue
+            results[key]["status"] in ("OPTIMAL", "ALMOST_OPTIMAL") || continue
+            push!(ns, parse(Int, m.captures[1]))
+        end
+        sort!(unique!(ns))
+        isempty(ns) && continue
+        ys = [results[point_key(D, n)]["gap"] for n in ns]
+        plot!(p, 2 .* ns, ys, marker=markers[mod1(idx, length(markers))], label="compressed, D=$D")
+    end
+    if !isempty(lti)
+        lts = sort(parse.(Int, collect(keys(lti))))
+        plot!(p, lts, [E0 - lti[string(n)] for n in lts], marker=:hexagon, label="exact LTI")
+    end
+    savefig(p, joinpath(rundir, "figs", "gap_vs_n.png"))
+end
+
+function main(args)
+    Ds, ns_by_D, run_name, resume, silent = parse_args(args)
     psis = deserialize(joinpath(@__DIR__, "vumps_mps.jls"))
+    vumps_summary_path = joinpath(@__DIR__, "vumps_summary.json")
+    vumps_summary = isfile(vumps_summary_path) ? JSON.parsefile(vumps_summary_path) : Dict{String, Any}()
+    rundir = joinpath("results", run_name)
+    results = ensure_run_state(rundir)
+    json_path = joinpath(rundir, "compressed_lti.json")
+    merge_meta!(results, Ds, ns_by_D, resume, silent, vumps_summary_path, vumps_summary, run_name)
 
     # helper sanity: ptrace on a product state
     a = [1.0, 0]; b = [0.0, 1, 0, 0]
@@ -163,24 +309,37 @@ function main()
     println("helper sanity OK"); flush(stdout)
 
     # uncompressed LTI reference (physical chain), n = 4, 6 (n=8 is too heavy uncompressed)
-    lti = Dict{Int, Float64}()
+    lti = get!(results, "LTI", Dict{String, Any}())
     for n in [4, 6]
-        E, st = solve_LTI(n)
-        lti[n] = E
+        key = string(n)
+        if resume && haskey(lti, key)
+            println("Skipping cached LTI physical n=$n"); flush(stdout)
+            continue
+        end
+        E, st = solve_LTI(n; silent=silent)
+        lti[key] = E
         @printf("LTI physical n=%2d: E = %.10f  (gap %.2e, status %s)\n", n, E, E0 - E, st)
         flush(stdout)
         @assert E <= E0 + 1e-9
+        results["LTI"] = lti
+        write_results(json_path, results)
     end
 
     # compressed ladder
-    results = Dict{String, Any}()
-    ns_by_D = Dict(2 => [4, 6, 8, 10, 15, 20, 30, 50, 80, 120],
-                   3 => [4, 6, 8, 10, 15, 20, 30, 50])
-    for D in [2, 3]
+    for D in Ds
+        if !haskey(psis, D)
+            println("Skipping D=$D: no converged VUMPS coarse-grainer in vumps_mps.jls"); flush(stdout)
+            continue
+        end
         B = super_tensor(psis[D])
         for n in ns_by_D[D]
+            key = point_key(D, n)
+            if resume && haskey(results, key)
+                println("Skipping cached D=$D super-n=$n"); flush(stdout)
+                continue
+            end
             t0 = time()
-            E, st = solve_compressed(B, n)
+            E, st = solve_compressed(B, n; silent=silent)
             wall = time() - t0
             gap = E0 - E
             @printf("D=%d super-n=%3d: E = %.10f  gap %.3e  wall %.1fs  status %s\n",
@@ -194,35 +353,23 @@ function main()
             end
             if n == 4    # E_comp(super-4) <= E_LTI(8) <= E_LTI(6) (LTI is non-decreasing): necessary check
                 @printf("   check: %.10f <= LTI(6) = %.10f ? %s\n",
-                        E, lti[6], E <= lti[6] + 1e-9)
+                        E, lti["6"], E <= lti["6"] + 1e-9)
                 flush(stdout)
             end
-            results["D$D-n$n"] = Dict("E" => E, "gap" => gap, "wall" => wall,
-                                      "status" => string(st))
+            results[key] = Dict("E" => E, "gap" => gap, "wall" => wall,
+                                "status" => string(st), "physical_n" => 2 * n,
+                                "super_n" => n)
+            results["plateaus"] = summarize_plateaus(results)
+            write_results(json_path, results)
         end
     end
-    results["LTI"] = lti
-
-    rundir = "results/20260727-kullschuch-mve"
-    mkpath(joinpath(rundir, "figs"))
-    open(joinpath(rundir, "compressed_lti.json"), "w") do io
-        JSON.print(io, results, 2)
-    end
-
-    p = plot(xscale=:log10, yscale=:log10, xlabel="n", ylabel="Delta E",
-             title="Compressed-LTI relaxation, Heisenberg chain (Fig. 2b repro)",
-             legend=:bottomleft, size=(700, 450))
-    for (D, mk) in [(2, :circle), (3, :square)]
-        ns = ns_by_D[D]
-        ys = [results["D$D-n$n"]["gap"] for n in ns]
-        plot!(p, 2 .* ns, ys, marker=mk, label="compressed, D=$D (x-axis: physical spins)")
-    end
-    lts = sort!(collect(keys(lti)))
-    plot!(p, lts, [E0 - lti[n] for n in lts], marker=:diamond, label="exact LTI")
-    savefig(p, joinpath(rundir, "figs", "fig2b_reproduction.png"))
+    results["plateaus"] = summarize_plateaus(results)
+    write_results(json_path, results)
+    plot_results(rundir, results, Ds, lti)
     println("DONE. figure + json saved to $rundir"); flush(stdout)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    main()
+    main(ARGS)
+    exit(0)
 end
