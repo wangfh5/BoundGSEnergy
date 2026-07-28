@@ -19,7 +19,9 @@ Research code is organized as a vertical slice per physical model. Shared `src/`
 ```text
 scripts/
 ├── heisenberg1d/     # active method-development path
-└── heisenberg2d/     # structured-NPA baseline
+├── j1j2_1d/          # planned after the 1D Heisenberg gate
+├── heisenberg2d/     # structured-NPA baseline
+└── j1j2_2d/          # planned after the 2D Heisenberg gate
 
 artifacts/
 └── coarse_grainers/  # reusable tensors and convergence metadata
@@ -28,7 +30,7 @@ results/
 └── <dated-run>/      # immutable run families with incremental checkpoints
 ```
 
-New `j1j2_1d/` and `j1j2_2d/` folders will be created only when those stages start. Historical result folders are never reorganized or overwritten.
+The two J1-J2 folders contain stage README files only; runnable code is added when their gates pass. Historical result folders are never reorganized or overwritten.
 
 ## Current evidence
 
@@ -152,7 +154,7 @@ If the `D = 7` saturation gap remains above `1e-5`, attempt coarse-grainer optim
 
 This stage starts only after the 1D Heisenberg hybrid pipeline passes its finite-size `N = 50` gate.
 
-1. Create `scripts/j1j2_1d/` with its own Hamiltonian convention, reference values, VUMPS coarse-grainers, and result notes.
+1. Add model-specific scripts under `scripts/j1j2_1d/` with their own Hamiltonian convention, reference values, VUMPS coarse-grainers, and result notes.
 2. Use the Majumdar-Ghosh point `J2/J1 = 0.5` as the exact end-to-end anchor.
 3. Select the remaining coupling points before compute; the challenge specifies size and accuracy but not a mandatory coupling grid.
 4. Target 100 spins and `1e-3` accuracy, enabling strengthenings incrementally because PSD state-optimality is known to be less stable in frustrated regimes.
@@ -168,7 +170,7 @@ The existing QMBCertify scripts remain the structured-NPA baseline. A certificat
 
 ## Stage J2D — 2D J1-J2 model
 
-This stage starts only after the 2D Heisenberg coarse-graining gate passes. The initial deliverable is the 10 × 10 energy lower bound at `1e-2`. Addressing the phase controversy requires a separately specified observable-certification question and cannot be claimed from energy bounds alone.
+The `scripts/j1j2_2d/` folder remains README-only until the 2D Heisenberg coarse-graining gate passes. The initial deliverable is the 10 × 10 energy lower bound at `1e-2`. Addressing the phase controversy requires a separately specified observable-certification question and cannot be claimed from energy bounds alone.
 
 ## Experiment and certificate protocol
 

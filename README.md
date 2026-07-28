@@ -22,6 +22,8 @@ registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219)
     precursor reproduction of arXiv:2604.01555 Table 8 (structured NPA,
     QMBCertify.jl): certified lower bounds for the 2D square-lattice
     Heisenberg model, L = 4, 6, 8.
+  - `j1j2_1d/` — staged workspace for the 1D J1-J2 chain; currently contains only its model contract and activation gate.
+  - `j1j2_2d/` — staged workspace for the square-lattice J1-J2 model; currently contains only its model contract and activation gate.
 - `artifacts/coarse_grainers/` — reusable coarse-graining tensors and convergence summaries, grouped by model.
 - `results/` — run artifacts (JSON numbers + figures):
   - `20260727-kullschuch-mve/` — compressed-LTI reproduction of
