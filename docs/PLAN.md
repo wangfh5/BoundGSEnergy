@@ -2,6 +2,8 @@
 
 Ratified 2026-07-27. These four answers are the skeleton of the final report.
 
+The staged execution plan and current decision gates are maintained in [RESEARCH_PLAN.md](RESEARCH_PLAN.md).
+
 ## 1. What we compute
 
 Implement the NPA + coarse-graining combination: block neighbouring spins

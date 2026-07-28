@@ -37,8 +37,8 @@ registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219)
   (rendered full text + INDEX.md + NOTES.md field map) built with the
   harness's `/survey` pipeline. `knowledge/ref.bib` is the bibliography
   source of truth.
-- `docs/PLAN.md` — the ratified plan: what we compute, sizes, success
-  criteria, kill criteria.
+- `docs/PLAN.md` — the ratified scope, target sizes, success criteria, and kill criteria.
+- `docs/RESEARCH_PLAN.md` — the staged working plan, scientific gates, experiment protocol, and immediate backlog.
 - `Ion.toml` / `Ion.lock` — the research skills this repo's agents use,
   pinned as remote dependencies on `QuantumBFS/quantum.harness` and
   `QuantumBFS/sci-brain` (install with `ion add`).
