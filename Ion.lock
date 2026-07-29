@@ -1,4 +1,10 @@
 [[skill]]
+name = "agents-update"
+source = ""
+kind = "local"
+checksum = "sha256:48e23dcc1d3e1d9ce3d92e660bd33e0cb7b0e64adbf1fa574fea6d9472e5330d"
+
+[[skill]]
 name = "autoresearch"
 source = "https://github.com/QuantumBFS/sci-brain.git"
 kind = "git"
@@ -47,12 +53,28 @@ commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
 checksum = "sha256:4020aa3aef1434e45d3a924fe446840d65bd9fde4c2ef5ee3faa87a4844cabd0"
 
 [[skill]]
+name = "build-apptainer-image"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/build-apptainer-image"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:4488976e66f34a8e45e1d17ab3d3802abd3006b641fbf86db3a8380d5f46fc10"
+
+[[skill]]
 name = "challenge-report"
 source = "https://github.com/QuantumBFS/quantum.harness.git"
 kind = "git"
 path = "skills/challenge-report"
 commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
 checksum = "sha256:905cc0915508430a3ce702e7b82450ef3d4ccfcabe6b2ca35a929636040db7cf"
+
+[[skill]]
+name = "cluster-jobs"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/cluster-jobs"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:0b487ec22a28b014a354242db60923fc567d57ecae1466b37cf5bd54f3ec82c7"
 
 [[skill]]
 name = "cross-method-check"
@@ -79,6 +101,12 @@ commit = "df5a3842b03ad8088c37fc94c1e366f767d16a2c"
 checksum = "sha256:9e974150838d46556ef69ce30415fd040908bd6b0d7f9689b0b0f9c628f113ad"
 
 [[skill]]
+name = "ion-cli"
+source = ""
+kind = "local"
+checksum = "sha256:33214573aea58b5b3925428050cc9ad13c37227a11bf6c19e4ad3535881ce16e"
+
+[[skill]]
 name = "method-polyopt"
 source = "https://github.com/QuantumBFS/quantum.harness.git"
 kind = "git"
@@ -92,7 +120,23 @@ source = "https://github.com/QuantumBFS/quantum.harness.git"
 kind = "git"
 path = "skills/report"
 commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
-checksum = "sha256:0f6ffd2555a8a72cb262196c5d0f1d54bd3d0bea0afc828758b6583bab488f28"
+checksum = "sha256:fe33e675e39e95c7b2a4d80a4f5ad5fa1756fe300350eec240d6236e97e13e37"
+
+[[skill]]
+name = "setup-cluster"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/setup-cluster"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:06e28d0593bbe48c01e5d6ff46292850bf80be0b3ef9b1b4a963f7ab3a687f41"
+
+[[skill]]
+name = "setup-julia"
+source = "https://github.com/QuantumBFS/quantum.harness.git"
+kind = "git"
+path = "skills/setup-julia"
+commit = "9afb9376c41e3e8c80b3f55c4988450deb6c6888"
+checksum = "sha256:a4a5429d11fc4536ffe1715c1be027758e06d5c94320753f9fa2c279a6870041"
 
 [[skill]]
 name = "solve"

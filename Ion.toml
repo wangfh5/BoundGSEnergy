@@ -8,6 +8,10 @@ using-mpskit = { source = "QuantumBFS/quantum.harness/skills/using-mpskit" }
 using-itensors = { source = "QuantumBFS/quantum.harness/skills/using-itensors" }
 solve = { source = "QuantumBFS/quantum.harness/skills/solve" }
 using-slurm = { source = "QuantumBFS/quantum.harness/skills/using-slurm" }
+cluster-jobs = { source = "QuantumBFS/quantum.harness/skills/cluster-jobs" }
+setup-cluster = { source = "QuantumBFS/quantum.harness/skills/setup-cluster" }
+build-apptainer-image = { source = "QuantumBFS/quantum.harness/skills/build-apptainer-image" }
+setup-julia = { source = "QuantumBFS/quantum.harness/skills/setup-julia" }
 download-ref = { source = "QuantumBFS/quantum.harness/skills/download-ref" }
 report = { source = "QuantumBFS/quantum.harness/skills/report" }
 cross-method-check = { source = "QuantumBFS/quantum.harness/skills/cross-method-check" }

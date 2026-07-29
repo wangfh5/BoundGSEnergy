@@ -1,6 +1,7 @@
 .raw/
 .figures/
 *.tmp
+__pycache__/
 /results/
 /artifacts/coarse_grainers/
 
@@ -53,3 +54,11 @@ CLAUDE.md
 .claude/skills/take-challenge
 .agents/skills/challenge-report
 .claude/skills/challenge-report
+.agents/skills/build-apptainer-image
+.claude/skills/build-apptainer-image
+.agents/skills/cluster-jobs
+.claude/skills/cluster-jobs
+.agents/skills/setup-cluster
+.claude/skills/setup-cluster
+.agents/skills/setup-julia
+.claude/skills/setup-julia

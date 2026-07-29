@@ -8,6 +8,10 @@ NPA + RG coarse-graining. Registered as PR #219.
 
 - `scripts/` — runnable Julia (see README "Reproduce"). Project env is the
   repo-root `Project.toml`/`Manifest.toml`: run as `julia --project=. ...`
+  Also holds the HPC support scripts (`cluster_profile.py`,
+  `cluster_guardrail.py`, `cluster_probe.py`, `harness_slurm.sh`,
+  `harness_array_sbatch.sh`, `setup-julia.sh`) that the cluster skills drive,
+  with their pytest suite under `scripts/tests/`.
 - `results/<run>/` — generated run artifacts; ignored by Git, and new runs get a fresh dated folder rather than overwriting an old one
 - `knowledge/` — survey library; `ref.bib` is the bibliography source of
   truth; `.raw/` and `.figures/` are gitignored local caches
@@ -23,3 +27,17 @@ NPA + RG coarse-graining. Registered as PR #219.
 - Run the 1D certificate pipeline with exactly Julia 1.11.5
 - Skills are Ion remote dependencies (`ion add` to sync); do not vendor
   copies of skills into this repo
+
+## HPC / cluster skills
+
+The cluster skills (`using-slurm`, `cluster-jobs`, `setup-cluster`,
+`build-apptainer-image`, `setup-julia`) are remote Ion deps, like every other
+skill. Their SKILL.md text and `harness_slurm.sh` reference repo-root-relative
+paths like `skills/using-slurm/profiles/active.toml`; the committed `skills →
+.agents/skills` symlink makes those resolve to the Ion-fetched skill content
+(after `ion add`). The symlink is a path bridge, not vendored skill content.
+
+Select a cluster via `HARNESS_CLUSTER_PROFILE=<name>` (resolves to
+`skills/using-slurm/profiles/<name>.toml`; shipped examples: `localhost`,
+`scnet`, `qdeshell`) or `HARNESS_PROFILE_FILE=<path>` for a profile kept
+elsewhere. Verify the HPC scripts after changes with `pytest scripts/tests/`.
