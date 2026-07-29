@@ -3,12 +3,16 @@
 # Test-first: the variational energy must approach e0 = 1/4 - ln2 from ABOVE
 # and tighten with D. Saves the MPS tensors for T2 via Serialization.
 
-using MPSKit, MPSKitModels, TensorKit, LinearAlgebra, Serialization, Printf, JSON
+using MPSKit, MPSKitModels, TensorKit, LinearAlgebra, Serialization, Printf, JSON, Random
 
+const PINNED_JULIA_VERSION = v"1.11.5"
+VERSION == PINNED_JULIA_VERSION ||
+    error("BoundGSEnergy requires Julia $PINNED_JULIA_VERSION, found $VERSION")
 const E0_EXACT = 1/4 - log(2)   # Bethe ansatz, H = sum S_i . S_{i+1}, J = 1
 const DEFAULT_DS = [2, 3]
 const DEFAULT_TOL = 1e-12
 const DEFAULT_MAXITER = 400
+const VUMPS_DEFAULT_SEED = 20260729
 const COARSE_GRAINER_DIR = normpath(joinpath(@__DIR__, "..", "..", "artifacts", "coarse_grainers", "heisenberg1d"))
 
 parse_int_list(spec::AbstractString) = [parse(Int, strip(x)) for x in split(spec, ",") if !isempty(strip(x))]
@@ -17,6 +21,7 @@ function parse_args(args)
     Ds = copy(DEFAULT_DS)
     tol = DEFAULT_TOL
     maxiter = DEFAULT_MAXITER
+    seed = VUMPS_DEFAULT_SEED
     for arg in args
         if startswith(arg, "--Ds=")
             Ds = parse_int_list(split(arg, "=", limit=2)[2])
@@ -24,12 +29,15 @@ function parse_args(args)
             tol = parse(Float64, split(arg, "=", limit=2)[2])
         elseif startswith(arg, "--maxiter=")
             maxiter = parse(Int, split(arg, "=", limit=2)[2])
+        elseif startswith(arg, "--seed=")
+            seed = parse(Int, split(arg, "=", limit=2)[2])
         else
             error("unknown argument: $arg")
         end
     end
     sort!(unique!(Ds))
-    Ds, tol, maxiter
+    seed >= 0 || error("seed must be nonnegative")
+    Ds, tol, maxiter, seed
 end
 
 function atomic_serialize(path, value)
@@ -55,7 +63,7 @@ function write_outputs(psis, summary)
 end
 
 function main(args)
-    Ds, tol, maxiter = parse_args(args)
+    Ds, tol, maxiter, seed = parse_args(args)
     L = 2   # 2-site unit cell: AFM Néel period; VUMPS is far better conditioned than 1-site
     H = heisenberg_XXX(Float64, Trivial, InfiniteChain(L); spin=1//2)
     psis_path = joinpath(COARSE_GRAINER_DIR, "vumps_mps.jls")
@@ -66,6 +74,8 @@ function main(args)
         "unit_cell" => L,
         "tol" => tol,
         "maxiter" => maxiter,
+        "seed" => seed,
+        "julia_version" => string(VERSION),
         "Ds_requested" => Ds,
         "runs" => Dict{String, Any}(),
     )
@@ -73,14 +83,22 @@ function main(args)
     summary["unit_cell"] = L
     summary["tol"] = tol
     summary["maxiter"] = maxiter
+    summary["seed"] = seed
+    summary["julia_version"] = string(VERSION)
     summary["Ds_requested"] = Ds
     summary["runs"] = get(summary, "runs", Dict{String, Any}())
 
     for D in Ds
         println("Running VUMPS for D=$D"); flush(stdout)
+        run_seed = seed + D
+        Random.seed!(run_seed)
         psi0 = InfiniteMPS(Float64, fill(physicalspace(H, 1), L), fill(ComplexSpace(D), L))
         ok = false
-        record = Dict{String, Any}("D" => D)
+        record = Dict{String, Any}(
+            "D" => D,
+            "random_seed" => run_seed,
+            "julia_version" => string(VERSION),
+        )
         had_cached = haskey(psis, D)
         try
             psi, envs, delta = find_groundstate(psi0, H, VUMPS(; tol=tol, maxiter=maxiter))

@@ -1,6 +1,8 @@
 .raw/
 .figures/
 *.tmp
+/results/
+/artifacts/coarse_grainers/
 
 # Managed by ion
 .agents/skills/ion-cli

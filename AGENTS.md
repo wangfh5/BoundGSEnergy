@@ -8,8 +8,7 @@ NPA + RG coarse-graining. Registered as PR #219.
 
 - `scripts/` — runnable Julia (see README "Reproduce"). Project env is the
   repo-root `Project.toml`/`Manifest.toml`: run as `julia --project=. ...`
-- `results/<run>/` — committed run artifacts (JSON + figures); new runs get
-  a fresh dated folder, never overwrite an old one
+- `results/<run>/` — generated run artifacts; ignored by Git, and new runs get a fresh dated folder rather than overwriting an old one
 - `knowledge/` — survey library; `ref.bib` is the bibliography source of
   truth; `.raw/` and `.figures/` are gitignored local caches
 - `docs/` — PLAN.md (ratified plan), discussion logs
@@ -20,5 +19,7 @@ NPA + RG coarse-graining. Registered as PR #219.
   digits at the residual level, never beyond
 - The sandbox ceiling: a certified lower bound must sit at or below its
   reference value — a violation means an index/model bug, always
+- Commit the code, pinned environment, tests, documentation, and reproduction commands; do not commit generated results or coarse-grainer caches
+- Run the 1D certificate pipeline with exactly Julia 1.11.5
 - Skills are Ion remote dependencies (`ion add` to sync); do not vendor
   copies of skills into this repo

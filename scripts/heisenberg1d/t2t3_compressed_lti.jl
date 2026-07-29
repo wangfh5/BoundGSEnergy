@@ -7,16 +7,83 @@ ENV["GKSwstype"] = "100"
 
 using Serialization, LinearAlgebra, Printf, JuMP, MosekTools, Plots, JSON, Dates, SHA
 using MPSKit, TensorKit   # needed only so deserialize() can resolve the saved types
+import QMBCertify
+
+const PINNED_JULIA_VERSION = v"1.11.5"
+VERSION == PINNED_JULIA_VERSION ||
+    error("BoundGSEnergy requires Julia $PINNED_JULIA_VERSION, found $VERSION")
 
 const E0 = 1/4 - log(2)
 const DEFAULT_DS = [2, 3]
 const DEFAULT_RUN_SUFFIX = "kullschuch-mve"
+const VUMPS_DEFAULT_SEED = 20260729
 const CLAIMED_DIGITS = 6
+const BOUNDGSENERGY_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
 const COARSE_GRAINER_DIR = normpath(joinpath(@__DIR__, "..", "..", "artifacts", "coarse_grainers", "heisenberg1d"))
 const RESULT_SCHEMA_VERSION = 2
+const NUMERICAL_BOUND_SCHEMA_VERSION = 1
 const SYSTEM_SCOPE = "infinite_translation_invariant"
+const MOI = JuMP.MOI
+const ExactRational = Rational{BigInt}
 
 parse_int_list(spec::AbstractString) = [parse(Int, strip(x)) for x in split(spec, ",") if !isempty(strip(x))]
+
+function bethe_ground_reference(system_size; tolerance=1e-13, max_iterations=100)
+    iseven(system_size) || error("Bethe ground-state reference requires even N")
+    down_spins = system_size ÷ 2
+    quantum_numbers = collect(-(down_spins - 1) / 2:(down_spins - 1) / 2)
+    rapidities = 0.5 .* tan.(pi .* quantum_numbers ./ system_size)
+
+    function residual_jacobian(values)
+        residual = zeros(down_spins)
+        jacobian = zeros(down_spins, down_spins)
+        for row in 1:down_spins
+            residual[row] = system_size * 2 * atan(2 * values[row]) - 2 * pi * quantum_numbers[row]
+            jacobian[row, row] = system_size * 4 / (1 + 4 * values[row]^2)
+            for column in 1:down_spins
+                row == column && continue
+                difference = values[row] - values[column]
+                phase_derivative = 2 / (1 + difference^2)
+                residual[row] -= 2 * atan(difference)
+                jacobian[row, row] -= phase_derivative
+                jacobian[row, column] += phase_derivative
+            end
+        end
+        residual, jacobian
+    end
+
+    for iteration in 1:max_iterations
+        residual, jacobian = residual_jacobian(rapidities)
+        max_residual = maximum(abs, residual)
+        if max_residual <= tolerance
+            total_energy = system_size / 4 - sum(0.5 / (rapidity^2 + 0.25) for rapidity in rapidities)
+            return Dict(
+                "method" => "finite periodic Bethe ansatz",
+                "system_size" => system_size,
+                "down_spins" => down_spins,
+                "total_energy" => total_energy,
+                "energy_per_site" => total_energy / system_size,
+                "max_equation_residual" => max_residual,
+                "newton_iterations" => iteration,
+                "largest_absolute_rapidity" => maximum(abs, rapidities),
+            )
+        end
+        step = jacobian \ residual
+        current_norm = norm(residual)
+        scale = 1.0
+        while scale > 2.0^-20
+            candidate = rapidities - scale * step
+            candidate_residual, _ = residual_jacobian(candidate)
+            if norm(candidate_residual) < current_norm
+                rapidities = candidate
+                break
+            end
+            scale /= 2
+        end
+        scale > 2.0^-20 || error("Bethe Newton line search failed")
+    end
+    error("Bethe ground-state reference did not converge")
+end
 
 function default_ns_by_D(D)
     if D <= 2
@@ -363,9 +430,11 @@ function super_tensor(psi)
     A1 = convert(Array, psi.AL[1]); A2 = convert(Array, psi.AL[2])
     @assert maximum(abs, imag.(A1)) < 1e-10 && maximum(abs, imag.(A2)) < 1e-10 "complex MPS"
     A1 = real(A1); A2 = real(A2)
-    D, d, _ = size(A1)
-    B = zeros(D, d * d, D)
-    for α in 1:D, s1 in 1:d, s2 in 1:d, γ in 1:D, β in 1:D
+    Douter, d, Dinner = size(A1)
+    Dinner2, d2, Douter2 = size(A2)
+    @assert Douter == Douter2 && Dinner == Dinner2 && d == d2 "incompatible two-site MPS tensor dimensions"
+    B = zeros(Douter, d * d, Douter)
+    for α in 1:Douter, s1 in 1:d, s2 in 1:d, γ in 1:Douter, β in 1:Dinner
         B[α, (s1 - 1) * d + s2, γ] += A1[α, s1, β] * A2[β, s2, γ]
     end
     B
@@ -374,7 +443,7 @@ end
 # W2 map: (βL,βR) <- (sa,sb), size (D^2, 16), MSF order everywhere
 function W2map(B)
     D = size(B, 1)
-    W = zeros(D * D, 16)
+    W = zeros(eltype(B), D * D, 16)
     for βL in 1:D, βR in 1:D, sa in 1:4, sb in 1:4, γ in 1:D
         W[(βL - 1) * D + βR, (sa - 1) * 4 + sb] += B[βL, sa, γ] * B[γ, sb, βR]
     end
@@ -383,7 +452,7 @@ end
 # M_R: β <- (β',s), size (D, D*4), MSF input order
 function MRmap(B)
     D = size(B, 1)
-    M = zeros(D, D * 4)
+    M = zeros(eltype(B), D, D * 4)
     for β in 1:D, βp in 1:D, s in 1:4
         M[β, (βp - 1) * 4 + s] = B[βp, s, β]
     end
@@ -392,15 +461,405 @@ end
 # M_L: β <- (s,β'), size (D, 4*D), MSF input order
 function MLmap(B)
     D = size(B, 1)
-    M = zeros(D, 4 * D)
+    M = zeros(eltype(B), D, 4 * D)
     for β in 1:D, βp in 1:D, s in 1:4
         M[β, (s - 1) * D + βp] = B[β, s, βp]
     end
     M
 end
 
+function dyadic_coarse_grainer(B, bits)
+    0 <= bits <= 26 || error("dyadic coarse-grainer bits must be between 0 and 26")
+    scale = 2.0^bits
+    round.(B .* scale) ./ scale
+end
+
+function fixed_scale_integers(values, scale)
+    integers = Array{BigInt}(undef, size(values))
+    for index in eachindex(values)
+        scaled = exact_rational(values[index]) * scale
+        denominator(scaled) == 1 || error("coarse-grainer entry is not on the declared dyadic grid")
+        integers[index] = numerator(scaled)
+    end
+    integers
+end
+
+function dyadic_relaxation_audit(B, bits)
+    scale = big(2)^bits
+    integer_B = fixed_scale_integers(B, scale)
+    exact_B = integer_B .// scale
+    exact_W2 = W2map(exact_B)
+    float_W2 = W2map(B)
+    all(exact_rational(float_W2[index]) == exact_W2[index] for index in eachindex(float_W2)) ||
+        error("Float64 W2 contraction is not exact")
+
+    integer_W2 = fixed_scale_integers(exact_W2, scale^2)
+    max_B_numerator = maximum(abs, integer_B)
+    max_W2_numerator = maximum(abs, integer_W2)
+    exact_integer_limit = big(2)^53
+    numerator_bounds = Dict(
+        "W2_contraction" => size(B, 1) * max_B_numerator^2,
+        "MR_ML_quadratic_coefficient" => 2 * max_B_numerator^2,
+        "W2_quadratic_coefficient" => 2 * max_W2_numerator^2,
+    )
+    maximum(values(numerator_bounds)) < exact_integer_limit ||
+        error("dyadic SDP coefficient assembly exceeds the Float64 exact-integer range")
+
+    Dict(
+        "status" => "PROVEN",
+        "dyadic_bits" => bits,
+        "grid_denominator" => string(scale),
+        "maximum_B_numerator" => string(max_B_numerator),
+        "maximum_W2_numerator" => string(max_W2_numerator),
+        "float64_exact_integer_limit" => string(exact_integer_limit),
+        "numerator_bounds" => Dict(name => string(value) for (name, value) in numerator_bounds),
+        "W2_exact_rational_contraction" => true,
+        "quadratic_coefficient_assembly_exact" => true,
+        "physical_relaxation_compatibility_proven" => true,
+        "scope" => "compressed and RDM8 formulations",
+    )
+end
+
+function mosek_residuals(model)
+    task = unsafe_backend(model).task
+    primal_objective = Mosek.getdouinf(task, Mosek.MSK_DINF_INTPNT_PRIMAL_OBJ)
+    dual_objective = Mosek.getdouinf(task, Mosek.MSK_DINF_INTPNT_DUAL_OBJ)
+    Dict(
+        "primal_feasibility" => Mosek.getdouinf(task, Mosek.MSK_DINF_INTPNT_PRIMAL_FEAS),
+        "dual_feasibility" => Mosek.getdouinf(task, Mosek.MSK_DINF_INTPNT_DUAL_FEAS),
+        "primal_objective" => primal_objective,
+        "dual_objective" => dual_objective,
+        "relative_gap" => abs(primal_objective - dual_objective) / max(1.0, abs(primal_objective), abs(dual_objective)),
+    )
+end
+
+exact_rational(value::Real) = rationalize(BigInt, value; tol=0)
+
+function float_down(value::ExactRational)
+    rounded = Float64(value)
+    isfinite(rounded) || error("exact certificate does not fit in Float64")
+    while exact_rational(rounded) > value
+        rounded = prevfloat(rounded)
+    end
+    rounded
+end
+
+function float_up(value::ExactRational)
+    rounded = Float64(value)
+    isfinite(rounded) || error("exact certificate does not fit in Float64")
+    while exact_rational(rounded) < value
+        rounded = nextfloat(rounded)
+    end
+    rounded
+end
+
+function decimal_floor(value::ExactRational; digits=CLAIMED_DIGITS)
+    scale = big(10)^digits
+    floor(BigInt, value * scale) // scale
+end
+
+function induced_two_norm_squared_upper(matrix)
+    row_bound = maximum(sum(exact_rational(abs(matrix[row, column])) for column in axes(matrix, 2)) for row in axes(matrix, 1))
+    column_bound = maximum(sum(exact_rational(abs(matrix[row, column])) for row in axes(matrix, 1)) for column in axes(matrix, 2))
+    row_bound * column_bound
+end
+
+function compressed_trace_bounds(B, n; rdm4=false, rdm5=false)
+    bounds = Dict{String, ExactRational}("rho3" => 1 // 1)
+    rdm4 && (bounds["rho4"] = 1 // 1)
+    rdm5 && (bounds["rho5"] = 1 // 1)
+    omega_bound = induced_two_norm_squared_upper(W2map(B))
+    propagation_bound = min(
+        induced_two_norm_squared_upper(MRmap(B)),
+        induced_two_norm_squared_upper(MLmap(B)),
+    )
+    for depth in 4:n
+        bounds["omega$(depth)"] = omega_bound
+        omega_bound *= propagation_bound
+    end
+    bounds
+end
+
+function psd_group_name(constraint)
+    object = constraint_object(constraint)
+    variables = reshape_vector(object.func, object.shape)
+    base = first(split(name(variables[1, 1]), "[", limit=2))
+    replace(base, r"_q-?\d+$" => "")
+end
+
+function indexed_linear_terms(expression, variable_indices)
+    sort!(
+        [(variable_indices[variable], Float64(coefficient)) for (coefficient, variable) in linear_terms(expression)];
+        by=first,
+    )
+end
+
+function primal_transcript(model)
+    variables = all_variables(model)
+    variable_indices = Dict(variable => index for (index, variable) in enumerate(variables))
+    objective = objective_function(model)
+    equalities = [
+        begin
+            object = constraint_object(constraint)
+            (
+                rhs=Float64(object.set.value - object.func.constant),
+                terms=indexed_linear_terms(object.func, variable_indices),
+            )
+        end
+        for constraint in all_constraints(model, AffExpr, MOI.EqualTo{Float64})
+    ]
+    psd_blocks = NamedTuple[]
+    covered_variables = Set{Int}()
+    for constraint in all_constraints(model, Vector{VariableRef}, MOI.PositiveSemidefiniteConeTriangle)
+        object = constraint_object(constraint)
+        matrix = reshape_vector(object.func, object.shape)
+        indices = Int[]
+        for row in axes(matrix, 1), column in row:last(axes(matrix, 2))
+            index = variable_indices[matrix[row, column]]
+            push!(indices, index)
+            push!(covered_variables, index)
+        end
+        push!(psd_blocks, (
+            group=psd_group_name(constraint),
+            dimension=size(matrix, 1),
+            variable_indices=indices,
+        ))
+    end
+    covered_variables == Set(eachindex(variables)) ||
+        error("strict dual post-certification requires every scalar variable to belong to a PSD block")
+    (
+        variable_count=length(variables),
+        objective=(constant=Float64(objective.constant), terms=indexed_linear_terms(objective, variable_indices)),
+        equalities=equalities,
+        psd_blocks=psd_blocks,
+    )
+end
+
+function reconstruct_dual_slacks(primal, multipliers)
+    length(multipliers) == length(primal.equalities) ||
+        error("dual transcript has the wrong number of equality multipliers")
+    coefficients = fill(ExactRational(0), primal.variable_count)
+    dual_constant = exact_rational(primal.objective.constant)
+    for (index, coefficient) in primal.objective.terms
+        coefficients[index] += exact_rational(coefficient)
+    end
+    for (equality, multiplier_value) in zip(primal.equalities, multipliers)
+        multiplier = exact_rational(multiplier_value)
+        dual_constant += multiplier * exact_rational(equality.rhs)
+        for (index, coefficient) in equality.terms
+            coefficients[index] -= multiplier * exact_rational(coefficient)
+        end
+    end
+    grouped_slacks = Dict{String, Vector{Matrix{ExactRational}}}()
+    covered_variables = Set{Int}()
+    for block in primal.psd_blocks
+        dimension = block.dimension
+        slack = Matrix{ExactRational}(undef, dimension, dimension)
+        cursor = 1
+        for row in 1:dimension, column in row:dimension
+            index = block.variable_indices[cursor]
+            cursor += 1
+            push!(covered_variables, index)
+            entry = coefficients[index] / (row == column ? 1 : 2)
+            slack[row, column] = entry
+            slack[column, row] = entry
+        end
+        cursor == length(block.variable_indices) + 1 || error("dual transcript has a malformed PSD block")
+        push!(get!(grouped_slacks, block.group, Matrix{ExactRational}[]), slack)
+    end
+    covered_variables == Set(1:primal.variable_count) ||
+        error("dual transcript does not cover every scalar variable")
+    dual_constant, grouped_slacks
+end
+
+function evaluate_dual_transcript(primal, multipliers, trace_bounds; eig_prec)
+    dual_constant, grouped_slacks = reconstruct_dual_slacks(primal, multipliers)
+    Set(keys(grouped_slacks)) == Set(keys(trace_bounds)) || error("PSD trace bounds do not match the assembled dual blocks")
+
+    correction = ExactRational(0)
+    groups = Dict{String, Any}()
+    for group in sort!(collect(keys(grouped_slacks)))
+        eigenvalue_bounds = [
+            first(QMBCertify.rigorous_min_eig_bound(Symmetric(slack); prec=eig_prec))
+            for slack in grouped_slacks[group]
+        ]
+        minimum_eigenvalue = minimum(eigenvalue_bounds)
+        group_correction = min(ExactRational(0), minimum_eigenvalue) * trace_bounds[group]
+        correction += group_correction
+        groups[group] = Dict(
+            "block_count" => length(eigenvalue_bounds),
+            "minimum_eigenvalue_lower_bound" => float_down(minimum_eigenvalue),
+            "minimum_eigenvalue_lower_bound_rational" => string(minimum_eigenvalue),
+            "trace_upper_bound" => float_down(trace_bounds[group]),
+            "trace_upper_bound_rational" => string(trace_bounds[group]),
+            "correction" => float_down(group_correction),
+            "correction_rational" => string(group_correction),
+        )
+    end
+    dual_constant, correction, groups
+end
+
+function atomic_serialize(path, value)
+    mkpath(dirname(path))
+    mktemp(dirname(path)) do temporary_path, io
+        serialize(io, value)
+        close(io)
+        mv(temporary_path, path; force=true)
+    end
+end
+
+function artifact_relative_path(path)
+    relative = relpath(abspath(path), BOUNDGSENERGY_ROOT)
+    (relative == ".." || startswith(relative, "../")) &&
+        error("certificate artifacts must be stored inside the repository")
+    relative
+end
+
+file_sha256(path) = bytes2hex(sha256(read(path)))
+
+function strict_dual_postcertificate(model, trace_bounds; transcript_path, context, eig_prec=256)
+    objective_sense(model) == MOI.MIN_SENSE || error("strict dual post-certification requires a minimization problem")
+    dyadic_bits = get(context, "dyadic_bits", nothing)
+    compatibility_audit = isnothing(dyadic_bits) ? nothing : dyadic_relaxation_audit(context["B"], dyadic_bits)
+    primal = primal_transcript(model)
+    equality_constraints = all_constraints(model, AffExpr, MOI.EqualTo{Float64})
+    multipliers = Float64[JuMP.dual(constraint) for constraint in equality_constraints]
+    transcript = Dict(
+        "version" => 1,
+        "context" => context,
+        "primal" => primal,
+        "equality_multipliers" => multipliers,
+    )
+    atomic_serialize(transcript_path, transcript)
+    dual_constant, correction, groups = evaluate_dual_transcript(primal, multipliers, trace_bounds; eig_prec)
+    certified = dual_constant + correction
+    published = decimal_floor(certified)
+    mosek_dual_objective = dual_objective_value(model)
+    Dict(
+        "status" => "CERTIFIED",
+        "method" => "exact-rational dual reconstruction with rigorous Arblib eigenvalue enclosures and analytic PSD trace bounds",
+        "coefficient_model" => isnothing(compatibility_audit) ?
+            "the assembled Float64 JuMP coefficients treated as exact dyadic rationals" :
+            "exactly assembled dyadic coarse-graining relaxation",
+        "physical_relaxation_compatibility_proven" => !isnothing(compatibility_audit),
+        "dyadic_compatibility_audit" => compatibility_audit,
+        "eigenvalue_precision_bits" => eig_prec,
+        "replay_transcript" => artifact_relative_path(transcript_path),
+        "replay_transcript_sha256" => file_sha256(transcript_path),
+        "coarse_grainer_fingerprint" => bytes2hex(sha1(reinterpret(UInt8, vec(context["B"])))),
+        "dual_constant" => float_down(dual_constant),
+        "dual_constant_rational" => string(dual_constant),
+        "mosek_dual_objective" => mosek_dual_objective,
+        "dual_objective_reconstruction_error" => abs(Float64(dual_constant) - mosek_dual_objective),
+        "correction" => float_down(correction),
+        "correction_rational" => string(correction),
+        "certified_lower_bound" => float_down(certified),
+        "certified_lower_bound_rational" => string(certified),
+        "published_certified_lower_bound" => float_down(published),
+        "published_certified_lower_bound_rational" => string(published),
+        "groups" => groups,
+    )
+end
+
+parse_exact_rational(value) = parse(ExactRational, value)
+
+function replayed_dual_certificate(certificate, label)
+    transcript_path = normpath(joinpath(BOUNDGSENERGY_ROOT, certificate["replay_transcript"]))
+    isfile(transcript_path) || error("$label replay transcript does not exist")
+    file_sha256(transcript_path) == certificate["replay_transcript_sha256"] ||
+        error("$label replay transcript hash is stale")
+    transcript = deserialize(transcript_path)
+    transcript["version"] == 1 || error("$label uses an unsupported dual-transcript version")
+    context = transcript["context"]
+    B = context["B"]
+    bytes2hex(sha1(reinterpret(UInt8, vec(B)))) == certificate["coarse_grainer_fingerprint"] ||
+        error("$label coarse-grainer fingerprint is stale")
+    exact_B, largest_forbidden = exact_charge_tensor(
+        B,
+        context["virtual_charges"],
+        context["super_charges"],
+    )
+    largest_forbidden == 0 && exact_B == B ||
+        error("$label coarse-grainer does not have exact U(1) support")
+    all(iszero, values(assert_charge_preserving_maps(
+        B,
+        context["virtual_charges"],
+        context["super_charges"],
+    ))) || error("$label coarse-graining maps do not preserve charge exactly")
+    dyadic_bits = get(context, "dyadic_bits", nothing)
+    compatibility_audit = isnothing(dyadic_bits) ? nothing : dyadic_relaxation_audit(B, dyadic_bits)
+    get(certificate, "physical_relaxation_compatibility_proven", false) == !isnothing(compatibility_audit) ||
+        error("$label physical-relaxation compatibility status is stale")
+    get(certificate, "dyadic_compatibility_audit", nothing) == compatibility_audit ||
+        error("$label dyadic compatibility audit is stale")
+    isempty(get(context, "stationarity_matrices", ())) || error("$label replay context contains unsupported stationarity constraints")
+    isnothing(get(context, "optimality_coefficients", nothing)) || error("$label replay context contains unsupported optimality constraints")
+    isempty(get(context, "symmetry_generators", ())) || error("$label replay context contains unsupported symmetry constraints")
+    model, _ = build_formulation_model(
+        B,
+        context["n"],
+        context["virtual_charges"],
+        context["super_charges"];
+        blocked=context["blocked"],
+        rdm4=context["rdm4"],
+        rdm5=get(context, "rdm5", false),
+        optimizer=nothing,
+    )
+    primal_transcript(model) == transcript["primal"] ||
+        error("$label replay transcript does not match an independently assembled primal SDP")
+    trace_bounds = compressed_trace_bounds(
+        B,
+        context["n"];
+        rdm4=context["rdm4"],
+        rdm5=get(context, "rdm5", false),
+    )
+    dual_constant, correction, groups = evaluate_dual_transcript(
+        transcript["primal"],
+        transcript["equality_multipliers"],
+        trace_bounds;
+        eig_prec=certificate["eigenvalue_precision_bits"],
+    )
+    dual_constant, correction, groups
+end
+
+function validated_dual_certificate(record, label)
+    certificate = get(record, "dual_certificate", nothing)
+    certificate isa AbstractDict || error("$label has no strict dual certificate")
+    certificate["status"] == "CERTIFIED" || error("$label dual certificate did not pass")
+    dual_constant, correction, replayed_groups = replayed_dual_certificate(certificate, label)
+    Set(keys(replayed_groups)) == Set(keys(certificate["groups"])) ||
+        error("$label dual-certificate groups are stale")
+    for (name, replayed) in replayed_groups
+        stored = certificate["groups"][name]
+        stored["block_count"] == replayed["block_count"] || error("$label $name block count is stale")
+        for field in ("minimum_eigenvalue_lower_bound_rational", "trace_upper_bound_rational", "correction_rational")
+            parse_exact_rational(stored[field]) == parse_exact_rational(replayed[field]) ||
+                error("$label $name $field is stale")
+        end
+        for field in ("minimum_eigenvalue_lower_bound", "trace_upper_bound", "correction")
+            stored[field] == replayed[field] || error("$label $name $field is stale")
+        end
+        expected_correction = min(
+            ExactRational(0),
+            parse_exact_rational(stored["minimum_eigenvalue_lower_bound_rational"]),
+        ) * parse_exact_rational(stored["trace_upper_bound_rational"])
+        expected_correction == parse_exact_rational(stored["correction_rational"]) ||
+            error("$label $name correction formula is invalid")
+    end
+    dual_constant == parse_exact_rational(certificate["dual_constant_rational"]) ||
+        error("$label dual constant is stale")
+    correction == parse_exact_rational(certificate["correction_rational"]) || error("$label dual-certificate correction is stale")
+    certified = dual_constant + correction
+    certified == parse_exact_rational(certificate["certified_lower_bound_rational"]) || error("$label certified lower bound is stale")
+    published = decimal_floor(certified)
+    published == parse_exact_rational(certificate["published_certified_lower_bound_rational"]) || error("$label published certified lower bound is stale")
+    certificate["certified_lower_bound"] == float_down(certified) || error("$label numeric certified lower bound is stale")
+    certificate["published_certified_lower_bound"] == float_down(published) || error("$label numeric published certified lower bound is stale")
+    certificate
+end
+
 # ---------- compressed LTI SDP ----------
-function solve_compressed(B, n; silent=true)
+function solve_compressed(B, n; silent=true, diagnostics=false)
     D = size(B, 1); dw = 4 * D * D            # size of Tr_phys(omega) output
     domega = 16 * D * D                       # omega matrix size
     W2 = W2map(B); MR = MRmap(B); ML = MLmap(B)
@@ -438,7 +897,69 @@ function solve_compressed(B, n; silent=true)
     optimize!(model)
     status = termination_status(model)
     E = status == OPTIMAL ? objective_value(model) : nothing
-    E, status
+    diagnostics || return E, status
+    record = Dict{String, Any}(
+        "status" => string(status),
+        "solver_wall_seconds" => solve_time(model),
+    )
+    if status == OPTIMAL
+        record["energy"] = E
+        record["residuals"] = mosek_residuals(model)
+    end
+    record
+end
+
+function solver_residual_scale(record)
+    record["status"] == "OPTIMAL" || error("a residual-adjusted bound requires OPTIMAL status")
+    residuals = record["residuals"]
+    objective_gap = abs(residuals["primal_objective"] - residuals["dual_objective"])
+    maximum((residuals["primal_feasibility"], residuals["dual_feasibility"], objective_gap))
+end
+
+function residual_adjusted_lower_bound(record)
+    residuals = record["residuals"]
+    minimum((record["energy"], residuals["primal_objective"], residuals["dual_objective"])) - solver_residual_scale(record)
+end
+
+function published_lower_bound(record; digits=CLAIMED_DIGITS)
+    scale = 10.0^digits
+    floor(residual_adjusted_lower_bound(record) * scale) / scale
+end
+
+function validated_solver_bounds(record, label)
+    record["status"] == "OPTIMAL" || error("$label is not OPTIMAL")
+    residuals = record["residuals"]
+    all(isfinite, (
+        record["energy"],
+        residuals["primal_feasibility"],
+        residuals["dual_feasibility"],
+        residuals["primal_objective"],
+        residuals["dual_objective"],
+    )) || error("$label contains non-finite solver values")
+    adjusted = residual_adjusted_lower_bound(record)
+    published = published_lower_bound(record)
+    record["residual_adjusted_lower_bound"] == adjusted || error("$label residual-adjusted bound is stale")
+    record["published_lower_bound"] == published || error("$label published bound is stale")
+    adjusted, published
+end
+
+function migrate_numerical_bound_records!(value)
+    if value isa AbstractDict
+        if get(value, "status", nothing) == "OPTIMAL" && haskey(value, "energy") && haskey(value, "residuals")
+            value["residual_adjusted_lower_bound"] = residual_adjusted_lower_bound(value)
+            value["published_lower_bound"] = published_lower_bound(value)
+        end
+        foreach(migrate_numerical_bound_records!, values(value))
+    elseif value isa AbstractVector
+        foreach(migrate_numerical_bound_records!, value)
+    end
+    value
+end
+
+function migrate_numerical_bound_schema!(results)
+    migrate_numerical_bound_records!(results)
+    get!(results, "meta", Dict{String, Any}())["numerical_bound_schema_version"] = NUMERICAL_BOUND_SCHEMA_VERSION
+    results
 end
 
 # ---------- uncompressed LTI on the physical chain (d=2) ----------

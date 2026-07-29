@@ -1,80 +1,62 @@
 # BoundGSEnergy
 
-Certified ground-state energy bounds for quantum spin systems via the
-**NPA SDP hierarchy + renormalization-group coarse-graining**.
+Certified ground-state energy bounds for quantum spin systems via structured NPA and renormalization-group coarse-graining.
 
-Team **BoundGSEnergy** (Fo-Hong Wang) — entry for challenge
-[**QuantumBFS/quantum.harness#49**](https://github.com/QuantumBFS/quantum.harness/issues/49),
-registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219)
-(Harnessing Quantum 2026).
+This repository is team **BoundGSEnergy**'s entry for [QuantumBFS/quantum.harness#49](https://github.com/QuantumBFS/quantum.harness/issues/49), registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219).
 
-## What is here
+## Current result
 
-- `scripts/` — runnable code grouped by model:
-  - `heisenberg1d/t1_vumps.jl` — VUMPS uniform-MPS coarse-grainer for the 1D Heisenberg
-    chain (MPSKit), parameterized over bond dimensions. The no-argument run is
-    the bounded D = 2, 3 baseline; larger D sweeps require explicit `--Ds=...`.
-  - `heisenberg1d/t2t3_compressed_lti.jl` — the Kull–Schuch compressed-LTI relaxation
-    (PRX 14, 021008, Sec. II, Eq. 14) in the super-spin formulation,
-    JuMP + Mosek, with dated result folders, coarse-grainer fingerprints, and
-    atomic incremental JSON writes.
-  - `heisenberg2d/heisenberg2d_sdp_table8.jl`, `heisenberg2d/heisenberg2d_sdp_l4_sweep.jl` — the
-    precursor reproduction of arXiv:2604.01555 Table 8 (structured NPA,
-    QMBCertify.jl): certified lower bounds for the 2D square-lattice
-    Heisenberg model, L = 4, 6, 8.
-  - `j1j2_1d/` — staged workspace for the 1D J1-J2 chain; currently contains only its model contract and activation gate.
-  - `j1j2_2d/` — staged workspace for the square-lattice J1-J2 model; currently contains only its model contract and activation gate.
-- `artifacts/coarse_grainers/` — reusable coarse-graining tensors and convergence summaries, grouped by model.
-- `results/` — run artifacts (JSON numbers + figures):
-  - `20260727-kullschuch-mve/` — compressed-LTI reproduction of
-    Kull–Schuch Fig. 2b: bounds below the Bethe e₀ at all n, monotone,
-    saturation plateaus 4.69e-3 (D=2) and 2.01e-3 (D=3).
-  - `20260728-kullschuch-d-sweep/` — higher-D follow-up: VUMPS converged at
-    D = 4, 5, 6, 7; compressed-LTI remained OPTIMAL for D=4 at 8- and 12-site
-    constraint support and for D=5 at 8-site support, but runtime/RAM rose
-    sharply before the paper's n_eff regime.
-  - `20260727-183425-wang2026-table8-heisenberg2d/` — Table 8 run
-    (`run.json` + self-contained `report.html`).
-- `knowledge/polynomial-optimization/` — a 34-reference survey library
-  (rendered full text + INDEX.md + NOTES.md field map) built with the
-  harness's `/survey` pipeline. `knowledge/ref.bib` is the bibliography
-  source of truth.
-- `docs/PLAN.md` — the ratified scope, target sizes, success criteria, and kill criteria.
-- `docs/RESEARCH_PLAN.md` — the staged working plan, scientific gates, experiment protocol, and immediate backlog.
-- `Ion.toml` / `Ion.lock` — the research skills this repo's agents use,
-  pinned as remote dependencies on `QuantumBFS/quantum.harness` and
-  `QuantumBFS/sci-brain` (install with `ion add`).
+The challenge target is a certified energy-density gap of at most `1e-5` for the periodic spin-1/2 Heisenberg chain at `N = 200`. The target system size has not yet been reached.
+
+At `N = 20`, the retained full structured-NPA certificate gives
+
+```text
+certified lower bound  = -0.44522841380294176
+certified upper bound  = -0.44521932649373910
+certified gap          =  9.087309202669595e-6
+```
+
+This passes the `1e-5` accuracy gate. The independent exact-compatible RG/RDM8 route gives a certified `N = 20` gap of `6.967350626092331e-5` and demonstrates that the RDM8 lift improves the compressed certificate by `3.772029497473017e-5`.
+
+The complete scientific status, retained evidence, discarded directions, compute scaling, and next decision are in [docs/PROGRESS.md](docs/PROGRESS.md).
+
+## Repository layout
+
+- `scripts/heisenberg1d/` contains the retained 1D Heisenberg implementations, entrypoints, and solver-free regression tests.
+- `results/` contains generated run artifacts and is ignored by Git. New runs must use a fresh dated folder.
+- `artifacts/coarse_grainers/` contains generated coarse-graining caches and is ignored by Git.
+- `docs/` contains the ratified plan and the mathematical contracts behind the finite-size, hybrid-RDM, dual-replay, and full-SOHS claims.
+- `notes/` is a pedagogical guide to the method and repository.
+- `knowledge/` is the survey library; `knowledge/ref.bib` is the bibliography source of truth.
 
 ## Reproduce
 
-```bash
-julia --project=. -e 'using Pkg; Pkg.instantiate()'   # pinned Manifest
-julia --project=. scripts/heisenberg1d/t1_vumps.jl                 # bounded D = 2, 3 baseline
-julia --project=. scripts/heisenberg1d/t2t3_compressed_lti.jl      # bounded D = 2, 3 ladder
-```
-
-Higher-D probes are explicit:
+Install the Juliaup `1.11.5` channel, then instantiate the pinned environment with that explicit runtime:
 
 ```bash
-julia --project=. scripts/heisenberg1d/t1_vumps.jl --Ds=4,5,6,7
-julia --project=. scripts/heisenberg1d/t2t3_compressed_lti.jl --Ds=4,5 --ns=4,6 --run-name=20260728-kullschuch-d-sweep
+juliaup add 1.11.5
+julia +1.11.5 --startup-file=no --project=. -e 'using Pkg; Pkg.instantiate()'
 ```
 
-Mosek needs an academic license at `~/mosek/mosek.lic` (free:
-https://www.mosek.com/products/academic-licenses/).
+Run all retained solver-free checks:
 
-## Status / roadmap
+```bash
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_metadata.jl
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_h4.jl
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_rg_rdm8.jl
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_h11_full_sohs.jl
+```
 
-- [x] Reproduce arXiv:2604.01555 Table 8 with public QMBCertify (finding:
-      shipped code reproduces the PRX-2024 "old" column exactly, not the
-      2026 "new" column)
-- [x] MVE: Kull–Schuch compressed-LTI relaxation, Heisenberg chain,
-      Fig. 2b behavior reproduced (D = 2, 3)
-- [x] VUMPS coarse-grainers extended to D = 4, 5, 6, 7 (all converged with
-      2-site Float64 uMPS; see `artifacts/coarse_grainers/heisenberg1d/vumps_summary.json`)
-- [ ] #49 rung 1: 1D Heisenberg, 200 spins, 1e-5 accuracy (needs D ≳ 7
-      and/or coarse-grainer optimization; current local compressed-LTI cost
-      wall appears already near D=4, n=6 and D=5, n=4)
-- [ ] The combination proper: NPA moment/symmetry constraints inside the
-      compressed relaxation
-- [ ] Rungs 2–4: J1–J2 chains, 2D lattices
+Recompute the accepted full structured-NPA certificate:
+
+```bash
+run_stamp=$(date +%Y%m%d-%H%M%S)
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/h11_full_sohs_certificate.jl --run-name="${run_stamp}-full-sohs-n20" --mosek-threads=16
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_h11_full_sohs.jl --result="results/${run_stamp}-full-sohs-n20/full_sohs_certificate.json"
+```
+
+The command builds its exact finite-energy upper certificate, solves the structured-NPA SDP, writes the SOHS transcript, and immediately replays both endpoints. Generated results are not part of the commit.
+
+The longer RG/RDM8 reproduction chain, including every generated predecessor, is in [scripts/heisenberg1d/README.md](scripts/heisenberg1d/README.md). The SDP runs require a Mosek license. A clean `OPTIMAL` status is necessary but not sufficient for a certified claim: the validators also replay the exact arithmetic, verify the model or RG map provenance, and check the rigorous sandwich against an exact-rational upper bound.
+
+See [scripts/heisenberg1d/README.md](scripts/heisenberg1d/README.md) for the full script map and finite-size ladder.

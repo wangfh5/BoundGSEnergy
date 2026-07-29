@@ -1,36 +1,25 @@
 # PLAN — BoundGSEnergy / challenge #49
 
-Ratified 2026-07-27. These four answers are the skeleton of the final report.
-
-The staged execution plan and current decision gates are maintained in [RESEARCH_PLAN.md](RESEARCH_PLAN.md).
+Ratified 2026-07-27. Current evidence is maintained in [PROGRESS.md](PROGRESS.md), and the next decision gates are maintained in [RESEARCH_PLAN.md](RESEARCH_PLAN.md).
 
 ## 1. What we compute
 
-Implement the NPA + coarse-graining combination: block neighbouring spins
-into super-sites following PRX 14, 021008 (Sec. III-D-2), feed the blocked
-model into the structured-SDP certification pipeline already working from the
-Track-2 reproduction (QMBCertify.jl + Mosek). Start at ladder rung 1:
-certified lower bounds for the 1D Heisenberg chain.
+Implement the NPA + coarse-graining combination: block neighbouring spins into super-sites following PRX 14, 021008, Sec. III-D-2, then add structured-SDP constraints and strict post-certification. Start with certified lower bounds for the periodic 1D spin-1/2 Heisenberg chain.
 
 ## 2. Sizes
 
-Ladder: N = 20 (align with known values) → 50 → 100 → 200 (the #49 target).
-Each rung must validate (precision and cost) before the next is attempted.
+The ladder is `N = 20 → 50 → 100 → 200`, where `N = 200` is the first challenge target. Each rung must validate accuracy, certification, and cost before the next is attempted.
 
-The existing compressed-LTI MVE bounds the energy density of an infinite translation-invariant chain. Its `2n` physical-site support is not a finite `N = 2n` system, so it does not by itself complete this ladder. The detailed research plan treats a finite periodic chain as the default interpretation of the challenge target unless the challenge owner confirms a hierarchy-support interpretation.
+The finite-size contract proves that an exactly compatible compressed point at depth `n_super` lower-bounds every even periodic chain with `N >= 2n_super`. `support_sites = 2n_super` and the claimed `system_size = N` remain separate metadata fields, and accuracy is always measured against the reference for the claimed finite system.
 
-## 3. Success criteria (tiered)
+## 3. Success criteria
 
-- **Floor (teaching success):** coarse-grained SDP reproduces known bounds at
-  N = 20–50 AND is visibly cheaper (SDP size / wall time) than the
-  non-coarse-grained version at the same accuracy — proves coarse-graining
-  actually buys something.
-- **Target:** N = 200 lower bound meeting the #49 criterion of 10⁻⁵ accuracy.
-- **Stretch:** ladder rung 2 (1D J₁–J₂, 100 spins @ 10⁻³) if time allows.
+- **Floor:** reproduce known `N = 20–50` results and demonstrate a measurable accuracy or cost benefit from coarse-graining.
+- **Target:** certify the periodic `N = 200` energy density with gap at most `1e-5`.
+- **Stretch:** start the 1D `J1–J2` chain at `N = 100` with gap at most `1e-3`.
 
-## 4. Kill criteria — stop and report honestly if either fires
+## 4. Stop conditions
 
-- Coarse-graining shows no size/cost advantage at N = 50 (implementation bug
-  or no real benefit — both are reportable findings).
-- A single SDP point exceeds local memory (54 GB) — would need cluster /
-  redesign, outside this time box.
+- Stop a method branch if coarse-graining shows no accuracy or cost advantage at `N = 50`.
+- Stop local scaling before memory exhaustion and move to a high-memory environment only after a smaller certified gate predicts that the target is reachable.
+- Never promote a residual-adjusted numerical diagnostic to a certified lower bound without exact post-certification.
