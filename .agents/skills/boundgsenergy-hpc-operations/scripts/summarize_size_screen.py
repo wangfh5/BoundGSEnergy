@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
-from __future__ import annotations
-
 import json
 import sys
 from pathlib import Path
+from typing import List, Tuple
 
 
 REQUIRED_GATES = (
@@ -17,7 +16,7 @@ REQUIRED_GATES = (
 )
 
 
-def load_summary(path: Path) -> tuple[list[str], bool]:
+def load_summary(path: Path) -> Tuple[List[str], bool]:
     with path.open(encoding="utf-8") as handle:
         result = json.load(handle)
 
@@ -45,7 +44,7 @@ def load_summary(path: Path) -> tuple[list[str], bool]:
     return row, structural_ok
 
 
-def main(paths: list[str]) -> int:
+def main(paths: List[str]) -> int:
     if not paths:
         print("usage: summarize_size_screen.py <size_screen.json> ...", file=sys.stderr)
         return 2
