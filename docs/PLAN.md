@@ -1,6 +1,6 @@
 # PLAN — BoundGSEnergy / challenge #49
 
-Ratified 2026-07-27. Current evidence is maintained in [PROGRESS.md](PROGRESS.md), and the next decision gates are maintained in [RESEARCH_PLAN.md](RESEARCH_PLAN.md).
+Ratified 2026-07-27. The concise stage result is in the [Challenge Report](challenge-report/report.html), current evidence is maintained in [PROGRESS.md](PROGRESS.md), and the next decision gates are maintained in [RESEARCH_PLAN.md](RESEARCH_PLAN.md).
 
 ## 1. What we compute
 

@@ -71,6 +71,6 @@ The H2 feasibility gate is:
 
 The lift is inactive at the shallow `n = 4` probe: the D = 3 and D = 4 raw objectives change by less than `4e-11`. This does not establish redundancy after the recursive compressed constraints become active.
 
-The retained RG/RDM8 implementation reconstructs the D = 4 model from one exactly compatible 13-bit dyadic tensor. At n = 6, its physical compressed and RDM8 certificates differ by `2.127e-5`. At finite N = 20 and n = 10, they differ by `3.772e-5`; the RDM8 endpoint `-0.44528862186638035` and exact dyadic Rayleigh upper bound `-0.4452193264937391` give the rigorous finite gap `6.9673506261e-5`.
+The retained RG/RDM8 implementation reconstructs the D = 4 model from one exactly compatible 13-bit dyadic tensor. At n = 6, its physical compressed and RDM8 certificates differ by `2.127e-5`. At finite N = 20 and n = 10, they differ by `3.772e-5`; the RDM8 endpoint `-0.44528862186638035` and exact dyadic Rayleigh upper bound `-0.4452193264937391` give the rigorous finite gap `6.9295372641e-5`. Rounding the certified lower endpoint downward to six decimal places gives the separately recorded conservative published gap `6.9673506261e-5`.
 
 The runnable entrypoints are `scripts/heisenberg1d/rg_rdm8_local.jl` and `scripts/heisenberg1d/rg_rdm8_finite_n20.jl`. Independently rounded-map experiments are excluded from the retained certificate chain.

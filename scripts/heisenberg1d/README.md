@@ -6,7 +6,7 @@ These scripts study the periodic antiferromagnetic spin-1/2 Heisenberg chain
 H = \sum_i \mathbf{S}_i \cdot \mathbf{S}_{i+1}
 ```
 
-with `J = 1`. Run every entrypoint from the repository root with the pinned runtime as `julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/<script>.jl`.
+with `J = 1`. Run every entrypoint from the repository root with the pinned runtime as `julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/<script>.jl`. The current certified result and challenge scope are summarized in the standalone [Challenge Report](../../docs/challenge-report/report.html).
 
 ## Certified routes
 
@@ -16,7 +16,10 @@ with `J = 1`. Run every entrypoint from the repository root with the pinned runt
 - `rg_rdm8_finite_n20.jl` applies the same exact-compatible map at finite periodic `N = 20`, `n_super = 10`, validates its H0/H1/H3 provenance chain, and compares both lower certificates with an exact-rational Rayleigh upper bound.
 - `h10_qmbcertify_n20.jl` is the reusable QMBCertify configuration screen used by the full-model route.
 - `h11_full_sohs_certificate.jl` solves the selected structured-NPA model and validates its exact SOHS replay against a deterministically rebuilt, source-pinned model.
-- `finite_upper_certificate.jl` constructs and validates the exact-rational finite-energy upper certificate used by both routes.
+- `structured_rg_hybrid.jl` reconstructs an eight-spin RDM from full structured moments, audits its affine coefficients exactly, and attaches it to the exact dyadic RG hierarchy in the same primal SDP.
+- `structured_rg_certificate.jl` binds the fused SOHS/RG transcript to a rebuilt model and performs exact mixed post-certification.
+- `structured_rg_local.jl --link-mode=rdm8` is the accepted local `N = 20`, `D = 4`, `n_super = 5` unified entrypoint.
+- `finite_upper_certificate.jl` constructs and validates the exact-rational finite-energy upper certificate used by all certified routes.
 
 ## Baselines and numerical ladder
 
@@ -26,6 +29,7 @@ with `J = 1`. Run every entrypoint from the repository root with the pinned runt
 - `h3_finite_n20_d4.jl`, `h3_finite_n50_d4.jl`, and `h3_finite_n100_d4.jl` form the validated `D = 4` numerical ladder.
 - `h4_symmetry_probe_d5.jl`, `h4_d5_n6.jl`, and `h4_finite_n100_d5.jl` validate the `D = 5` numerical entry gate.
 - `h4_finite_n200_d5.jl` is a high-memory numerical entrypoint for depths `50`, `75`, and `100`. It deliberately cannot pass the challenge target until a strict post-certificate is integrated at that scale.
+- `structured_rg_size_screen.jl` is an exploratory system-size instrument that performs same-process exact replay without claiming a formal finite-size certificate.
 
 ## Retained negative probes
 
@@ -40,6 +44,7 @@ with `J = 1`. Run every entrypoint from the repository root with the pinned runt
 - `test_h4.jl` checks higher-`D` ladder invariants without stored results; explicit generated-result paths enable full predecessor replay.
 - `test_rg_rdm8.jl` checks exact dyadic compatibility without requiring stored results; optional result paths enable full H3 and certificate replay.
 - `test_h11_full_sohs.jl` checks deterministic full-model reconstruction without solving; `--result=<path>` enables exact replay, status gates, and transcript tamper rejection.
+- `test_structured_rg_hybrid.jl` checks the local-RDM coefficient audit, finite-support gate, and a lightweight fused fixture without solving; `--result=<path>` enables the heavier complete model rebuild, mixed-certificate replay, and transcript tamper rejection.
 
 Run the complete solver-free suite:
 
@@ -48,7 +53,20 @@ julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_metadata.j
 julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_h4.jl
 julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_rg_rdm8.jl
 julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_h11_full_sohs.jl
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_structured_rg_hybrid.jl
 ```
+
+## Reproduce the unified structured-NPA + RG certificate
+
+The local fusion entrypoint builds the selected structured-NPA model and exact 13-bit dyadic `D = 4` coarse-grainer, solves the standalone and unified `n_super = 5` models, and writes both exact transcripts:
+
+```bash
+run_stamp=$(date +%Y%m%d-%H%M%S)
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/structured_rg_local.jl --run-name="${run_stamp}-structured-rg-n20" --link-mode=rdm8 --n-super=5 --mosek-threads=16 --feasibility-tolerance=1e-7
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_structured_rg_hybrid.jl --result="results/${run_stamp}-structured-rg-n20/structured_rg.json"
+```
+
+The accepted validity gate requires both solves to be `OPTIMAL`, exact reconstruction of the complete fused model, strict lower and upper replay, and rejection of altered status, digest, coefficient audit, equality scales, or model coefficients. The accepted `n_super = 5` result has strict lower bound `-0.44522454084723984`, improves the matched structured-NPA endpoint by `2.715797138952425e-6`, and has rigorous gap `5.214353500759827e-6`.
 
 ## Reproduce the RG/RDM8 certificate
 

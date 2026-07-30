@@ -66,6 +66,6 @@ For a comparison of two solves, the raw objective separation must exceed the sum
 ## Validated points
 
 - H7 D = 4, `n_super = 6`: the exact-dyadic RDM8 endpoint exceeds the exact-dyadic compressed endpoint by `2.127e-5`, and physical compatibility is proven.
-- H7 finite periodic N = 20, D = 4, `n_super = 10`: the exact-dyadic RDM8 endpoint is `-0.44528862186638035`; together with the exact Rayleigh upper certificate it gives a rigorous finite gap of `6.9673506261e-5`.
+- H7 finite periodic N = 20, D = 4, `n_super = 10`: the exact-dyadic RDM8 endpoint is `-0.44528862186638035`; together with the exact Rayleigh upper certificate it gives a rigorous finite gap of `6.9295372641e-5`. The six-decimal downward-published endpoint gives the more conservative gap `6.9673506261e-5`.
 
 The reference H7 runs used names `20260729-h7-dyadic-d4-n6-k13` and `20260729-h7-finite-n20-dyadic-k13`. Generated artifacts are not versioned; their runnable entrypoints are `scripts/heisenberg1d/rg_rdm8_local.jl` and `scripts/heisenberg1d/rg_rdm8_finite_n20.jl`.

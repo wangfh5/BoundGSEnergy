@@ -1,0 +1,167 @@
+{
+  "title": "Challenge #49: Certified Heisenberg energy bounds",
+  "eyebrow": "BoundGSEnergy · Stage report · 2026-07-30",
+  "url": "https://github.com/QuantumBFS/quantum.harness/issues/49",
+  "lede": "A unified structured-NPA and exact-compatible RG relaxation certifies the periodic N = 20 Heisenberg energy density within 5.2144e-6 and strictly improves both matched parent relaxations.",
+  "sections": [
+    {
+      "title": "Challenge",
+      "blocks": [
+        {
+          "kind": "text",
+          "text": "The challenge asks for certified lower bounds on the ground-state energy density of the periodic spin-1/2 Heisenberg chain using NPA constraints with renormalization-group coarse-graining. The first full target is N = 200 with a rigorous lower-to-upper gap no larger than 1e-5."
+        },
+        {
+          "kind": "card",
+          "title": "Significance",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "A variational energy is only an upper bound. A complementary certified lower bound turns a numerical estimate into a rigorous interval and exposes whether the chosen local consistency constraints remain effective as the system grows."
+            }
+          ]
+        },
+        {
+          "kind": "kv",
+          "pairs": [
+            ["Challenge", "QuantumBFS/quantum.harness#49"],
+            ["Registration", "PR #219"],
+            ["Validation system", "Periodic N = 20 Heisenberg chain"],
+            ["Final target", "Periodic N = 200, certified gap <= 1e-5"],
+            ["Current scope", "N = 20 certification complete; N = 200 not yet attempted"]
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Approach",
+      "blocks": [
+        {
+          "kind": "badge",
+          "text": "Numerical SDP with exact post-certification",
+          "style": "neutral"
+        },
+        {
+          "kind": "kv",
+          "pairs": [
+            ["Structured hierarchy", "Order 4, extra = 1, RDM9, PSO3, LSO"],
+            ["RG hierarchy", "13-bit dyadic D = 4 map, n_super = 5"],
+            ["Physical link", "Audited eight-spin RDM reconstructed from canonical Pauli moments"],
+            ["Symmetry", "U(1)-blocked PSD variables"],
+            ["Conditioning", "Exact equality scales (1, 16, 1)"],
+            ["Solver/runtime", "Mosek, Julia 1.11.5"],
+            ["Certification", "Exact dyadic transcript replay plus rigorous eigenvalue enclosures"]
+          ]
+        },
+        {
+          "kind": "text",
+          "text": "The model reconstructs an eight-spin physical RDM from the complete structured moment basis, links an independent PSD copy coefficient-by-coefficient, and applies the audited dyadic RG maps to that copy. The structured and RG constraints are therefore intersected in one physical relaxation. Replay rebuilds the complete formulation, binds the objective direction and every equality scale, and subtracts rigorous SOHS and RG-slack corrections."
+        },
+        {
+          "kind": "table",
+          "columns": ["Component", "Scalar variables", "Wall time", "Memory"],
+          "rows": [
+            ["Model construction", "—", "125.77 s", "not captured"],
+            ["Matched structured NPA", "59,413", "7.96 s", "not captured"],
+            ["Unified structured NPA + RG", "76,501", "36.77 s", "not captured"]
+          ],
+          "numeric": [false, true, true, false]
+        },
+        {
+          "kind": "note",
+          "label": "Reproducibility boundary",
+          "style": "info",
+          "text": "Generated results and coarse-grainer caches are excluded from Git. The repository retains the pinned environment, source, exact model contract, tests, and complete commands needed to regenerate and replay the certificate."
+        }
+      ]
+    },
+    {
+      "title": "Results",
+      "blocks": [
+        {
+          "kind": "heading",
+          "text": "Periodic N = 20 certified interval",
+          "level": 3
+        },
+        {
+          "kind": "table",
+          "columns": ["Route", "Certified lower bound", "Exact upper bound", "Rigorous gap"],
+          "rows": [
+            ["Exact-compatible RG + RDM8", "-0.44528862186638035", "-0.44521932649373910", "6.9295372641e-5"],
+            ["Independent full structured NPA", "-0.44522836660051746", "-0.44521932649373910", "9.0401067783e-6"],
+            ["Matched structured-NPA parent", "-0.44522725664437880", "-0.44521932649373910", "7.9301506397e-6"],
+            ["Unified structured NPA + RG", "-0.44522454084723984", "-0.44521932649373910", "5.2143535008e-6"]
+          ],
+          "numeric": [false, true, true, true]
+        },
+        {
+          "kind": "verdict",
+          "status": "good",
+          "label": "N = 20 gate passed",
+          "why": "Both matched solves terminate OPTIMAL with FEASIBLE_POINT status. Exact mixed replay improves the matched structured parent by 2.7157971e-6 and leaves a rigorous gap of 5.2143535e-6."
+        },
+        {
+          "kind": "note",
+          "label": "Matched comparison",
+          "style": "info",
+          "text": "The independent full structured-NPA row is a separately reproduced certificate. The matched parent is solved in the same scaled run as the fused model and is the endpoint used for the strict monotonicity comparison."
+        },
+        {
+          "kind": "verdict",
+          "status": "warn",
+          "label": "Challenge not complete",
+          "why": "The required N = 200 certificate has not been produced. An exploratory N = 30, n_super = 5 screen keeps a positive raw gain but loses strict gain to growing moment residuals."
+        },
+        {
+          "kind": "table",
+          "columns": ["Trend point", "Raw fusion gain", "Strict fusion gain", "Interpretation"],
+          "rows": [
+            ["N = 20, n_super = 5", "3.9179e-7", "2.7158e-6", "formal certificate; fusion wins"],
+            ["N = 30, n_super = 5", "2.1437e-7", "-1.3332e-5", "exploratory only; fixed depth is insufficient"]
+          ],
+          "numeric": [false, true, true, false]
+        },
+        {
+          "kind": "code",
+          "title": "Recompute and replay the accepted unified certificate",
+          "text": "run_stamp=$(date +%Y%m%d-%H%M%S)\njulia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/structured_rg_local.jl --run-name=\"${run_stamp}-structured-rg-n20\" --link-mode=rdm8 --n-super=5 --mosek-threads=16 --feasibility-tolerance=1e-7\njulia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_structured_rg_hybrid.jl --result=\"results/${run_stamp}-structured-rg-n20/structured_rg.json\""
+        }
+      ]
+    },
+    {
+      "title": "Highlight",
+      "blocks": [
+        {
+          "kind": "card",
+          "title": "What's innovative",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "The fusion is a single exactly auditable relaxation, not a comparison or heuristic average of two bounds. A complete local Pauli-moment RDM is linked to an independent PSD witness before exact dyadic RG maps are applied, closing the physical-feasibility gap that ordinary floating-point coefficient assembly would leave."
+            }
+          ]
+        },
+        {
+          "kind": "card",
+          "title": "Significance of the output",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "At the validation size, RG adds a small but strict improvement to an already target-level structured-NPA certificate. This establishes that the two constraint families are compatible and complementary when numerical conditioning and exact replay are handled together."
+            }
+          ]
+        },
+        {
+          "kind": "card",
+          "title": "Next decision",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Keep the structured hierarchy, dyadic map, and equality scales fixed, then increase RG coverage rather than system size alone. The next gate is N = 30, n_super = 8. Only a positive strict gain there justifies N = 50 and eventual high-memory N = 200 runs."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

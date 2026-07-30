@@ -10,6 +10,23 @@ function parse_h11_test_args(args)
     normpath(isabspath(path) ? path : joinpath(BOUNDGSENERGY_ROOT, path))
 end
 
+@testset "energy-aware residual bound" begin
+    objective = ExactRational(-11, 25)
+    residuals = ExactRational[1 // 10000, 1 // 1000, -1 // 20000]
+    bound = h11_energy_aware_residual_bound(
+        objective,
+        residuals,
+        [Int[], H11_HAMILTONIAN_WORD, [2]],
+    )
+    @test bound.legacy_lower_bound ==
+        objective - sum(abs, residuals)
+    @test bound.energy_aware_lower_bound ==
+        (objective - residuals[1] - abs(residuals[3])) /
+        (1 + residuals[2] / H11_HAMILTONIAN_COEFFICIENT)
+    @test bound.certified_lower_bound ==
+        max(bound.legacy_lower_bound, bound.energy_aware_lower_bound)
+end
+
 @testset "H11 full SOHS model" begin
     @test VERSION == PINNED_JULIA_VERSION
     run_name, smoke, threads, tolerance, upper_result = parse_h11_args([

@@ -7,6 +7,8 @@ include(joinpath(@__DIR__, "finite_upper_certificate.jl"))
 
 const H11_EQUALITY_SCALE = 16384.0
 const H11_RANDOM_SEED = 0x48413131
+const H11_HAMILTONIAN_WORD = [1, 4]
+const H11_HAMILTONIAN_COEFFICIENT = ExactRational(3, 4)
 const H11_EXPECTED_QMB_SOURCE_SHA256 = "bc33d5913868e4556651408495b93543e19cf704699ccabc4b5b4ad37f2ab96c"
 const H11_EXPECTED_QMB_SOURCE_TREE_SHA256 = "36d3d25dc3fffc716cc057c76c140f173c3592ea03ce49eb9778b3914a25e419"
 
@@ -288,6 +290,51 @@ function h11_evaluate_transcript(transcript, expected_structure; eig_prec=256)
     certified_lower_bound, objective, residual_l1, residuals, groups
 end
 
+function h11_energy_aware_residual_bound(
+    objective,
+    residuals,
+    canonical_words;
+    scalar_correction=ExactRational(0),
+)
+    length(residuals) == length(canonical_words) ||
+        error("residuals do not match the canonical Pauli words")
+    canonical_words[1] == Int[] ||
+        error("the first canonical word is not the identity")
+    canonical_words[2] == H11_HAMILTONIAN_WORD ||
+        error("the second canonical word is not the Hamiltonian word")
+
+    identity_residual = residuals[1]
+    hamiltonian_residual = residuals[2]
+    other_residual_l1 =
+        sum(abs, residuals[3:end]; init=ExactRational(0))
+    denominator =
+        one(ExactRational) +
+        hamiltonian_residual / H11_HAMILTONIAN_COEFFICIENT
+    denominator > 0 ||
+        error("the energy-aware residual denominator is not positive")
+    legacy_lower_bound =
+        objective + scalar_correction - sum(abs, residuals)
+    energy_aware_lower_bound =
+        (
+            objective +
+            scalar_correction -
+            identity_residual -
+            other_residual_l1
+        ) / denominator
+    (
+        certified_lower_bound=max(
+            legacy_lower_bound,
+            energy_aware_lower_bound,
+        ),
+        legacy_lower_bound=legacy_lower_bound,
+        energy_aware_lower_bound=energy_aware_lower_bound,
+        identity_residual=identity_residual,
+        hamiltonian_residual=hamiltonian_residual,
+        other_residual_l1=other_residual_l1,
+        denominator=denominator,
+    )
+end
+
 function h11_certificate(model, data, transcript_path)
     transcript = h11_sohs_transcript(model, data.tsupp)
     atomic_serialize(transcript_path, transcript)
@@ -295,10 +342,16 @@ function h11_certificate(model, data, transcript_path)
         transcript,
         h11_model_structure(model, data.tsupp),
     )
+    sharpened = h11_energy_aware_residual_bound(
+        objective,
+        residuals,
+        transcript.canonical_words,
+    )
+    certified = sharpened.certified_lower_bound
     published = decimal_floor(certified; digits=9)
     Dict(
         "status" => "CERTIFIED",
-        "method" => "full-model exact-dyadic SOHS replay with rigorous PSD repair and Pauli-word l1 residual correction",
+        "method" => "full-model exact-dyadic SOHS replay with rigorous PSD repair and energy-aware Pauli-word residual correction",
         "julia_version" => string(VERSION),
         "operator_norm_argument" => "every canonical Pauli word has operator norm one",
         "qmbcertify_source_sha256" => H11_QMB_SOURCE_SHA256,
@@ -310,6 +363,23 @@ function h11_certificate(model, data, transcript_path)
         "identity_residual_l1" => float_up(residual_l1),
         "identity_residual_l1_rational" => string(residual_l1),
         "maximum_identity_residual" => float_up(maximum(abs, residuals)),
+        "residual_bound" => Dict(
+            "hamiltonian_word" => H11_HAMILTONIAN_WORD,
+            "hamiltonian_coefficient_rational" =>
+                string(H11_HAMILTONIAN_COEFFICIENT),
+            "identity_residual_rational" =>
+                string(sharpened.identity_residual),
+            "hamiltonian_residual_rational" =>
+                string(sharpened.hamiltonian_residual),
+            "other_residual_l1_rational" =>
+                string(sharpened.other_residual_l1),
+            "denominator_rational" =>
+                string(sharpened.denominator),
+            "legacy_lower_bound_rational" =>
+                string(sharpened.legacy_lower_bound),
+            "energy_aware_lower_bound_rational" =>
+                string(sharpened.energy_aware_lower_bound),
+        ),
         "certified_lower_bound" => float_down(certified),
         "certified_lower_bound_rational" => string(certified),
         "published_certified_lower_bound" => float_down(published),
@@ -352,10 +422,22 @@ function validated_h11_certificate(record, label; expected_structure=nothing)
     rebuilt_structure = isnothing(expected_structure) ?
         h11_rebuild_model_structure(configuration) :
         expected_structure
-    certified, objective, residual_l1, residuals, groups = h11_evaluate_transcript(
+    legacy_certified,
+    objective,
+    residual_l1,
+    residuals,
+    groups = h11_evaluate_transcript(
         transcript,
         rebuilt_structure,
     )
+    sharpened = h11_energy_aware_residual_bound(
+        objective,
+        residuals,
+        transcript.canonical_words,
+    )
+    certified = sharpened.certified_lower_bound
+    sharpened.legacy_lower_bound == legacy_certified ||
+        error("$label legacy residual bound is stale")
     exact_rational(record["solve"]["numeric_energy_per_site"]) == objective ||
         error("$label numeric objective is stale")
     record["solve"]["scalar_variables"] == transcript.variable_count ||
@@ -367,6 +449,26 @@ function validated_h11_certificate(record, label; expected_structure=nothing)
     parse_exact_rational(certificate["raw_objective_rational"]) == objective || error("$label raw objective is stale")
     parse_exact_rational(certificate["identity_residual_l1_rational"]) == residual_l1 ||
         error("$label residual correction is stale")
+    residual_bound = certificate["residual_bound"]
+    residual_bound["hamiltonian_word"] == H11_HAMILTONIAN_WORD ||
+        error("$label Hamiltonian word is stale")
+    parse_exact_rational(
+        residual_bound["hamiltonian_coefficient_rational"],
+    ) == H11_HAMILTONIAN_COEFFICIENT ||
+        error("$label Hamiltonian coefficient is stale")
+    for (field, value) in (
+        "identity_residual_rational" => sharpened.identity_residual,
+        "hamiltonian_residual_rational" =>
+            sharpened.hamiltonian_residual,
+        "other_residual_l1_rational" => sharpened.other_residual_l1,
+        "denominator_rational" => sharpened.denominator,
+        "legacy_lower_bound_rational" => sharpened.legacy_lower_bound,
+        "energy_aware_lower_bound_rational" =>
+            sharpened.energy_aware_lower_bound,
+    )
+        parse_exact_rational(residual_bound[field]) == value ||
+            error("$label $field is stale")
+    end
     parse_exact_rational(certificate["certified_lower_bound_rational"]) == certified ||
         error("$label certified lower bound is stale")
     published = decimal_floor(certified; digits=9)

@@ -1,15 +1,18 @@
 # Progress report — challenge #49
 
-Updated 2026-07-29. This is the authoritative status report for [QuantumBFS/quantum.harness#49](https://github.com/QuantumBFS/quantum.harness/issues/49) and PR #219.
+Updated 2026-07-30. This is the authoritative status report for [QuantumBFS/quantum.harness#49](https://github.com/QuantumBFS/quantum.harness/issues/49) and PR #219.
+
+For a concise four-section summary, see the standalone [Challenge Report](challenge-report/report.html).
 
 ## Executive status
 
 The challenge asks for certified energy-density lower bounds for increasingly large spin-1/2 Heisenberg systems using NPA constraints with RG coarse-graining. The first target is a periodic chain with `N = 200` and certified gap at most `1e-5`.
 
-The project has established two independently replayable certificate routes at `N = 20`:
+The project has established three independently replayable certificate routes at `N = 20`:
 
-1. An exact-compatible RG/RDM8 relaxation uses one 13-bit dyadic `D = 4` tensor to assemble every recursive map and SDP coefficient. It certifies a gap of `6.967350626092331e-5`.
-2. A full structured-NPA/SOHS relaxation without RG certifies a gap of `9.087309202669595e-6`, passing the requested accuracy threshold at the validation size.
+1. An exact-compatible RG/RDM8 relaxation uses one 13-bit dyadic `D = 4` tensor to assemble every recursive map and SDP coefficient. Its exact certificate endpoints give a gap of `6.929537264127523e-5`; rounding the lower bound downward to six decimal places gives the more conservative published gap `6.967350626092331e-5`.
+2. A full structured-NPA/SOHS relaxation without RG certifies a gap of `9.040106778343054e-6`, passing the requested accuracy threshold at the validation size.
+3. A unified structured-NPA + RG relaxation reconstructs an eight-spin RDM from the full moment basis, audits the moment-to-RDM coefficients exactly, and attaches the exact dyadic RG hierarchy in the same SDP. At `D = 4`, `n_super = 5`, it certifies a gap of `5.214353500759827e-6`, passing the accuracy gate and strictly improving both parent relaxations.
 
 The issue is not complete. `N = 50` and `N = 100` currently have numerical screens, not accepted lower certificates, and no `N = 200` solve is claimed.
 
@@ -49,17 +52,27 @@ Validation deterministically rebuilds the source-pinned model without solving an
 
 The retained implementation is `h10_qmbcertify_n20.jl` for configuration construction and `h11_full_sohs_certificate.jl` for the accepted solve and replay.
 
+### Unified structured NPA + RG
+
+The unified model dualizes the accepted SOHS formulation into physical moments and reconstructs an eight-spin RDM for four two-spin super-sites. An independent U(1)-blocked PSD variable is linked to that RDM by coefficients whose complete dyadic accumulation is audited below the Float64 exact-integer limit. The already audited 13-bit dyadic `W2`, `MR`, and `ML` maps then attach the recursive RG marginal constraints before the model is dualized back to a stable SOHS-like maximization. This is a genuine intersection of the two relaxations, not a comparison of separately optimized bounds.
+
+The transcript binds the local-RDM coefficient audit, exact coarse-grainer, U(1) charges, complete structured-NPA stationarity system, all SOHS PSD blocks, every RG affine PSD slack, and the exact equality-family scales `(1, 16, 1)` to a deterministically rebuilt model. Exact replay combines Pauli-word residual correction with analytic trace corrections for `rho4` and every `omega` group. The retained implementation is `structured_rg_hybrid.jl`, `structured_rg_certificate.jl`, and `structured_rg_local.jl`; the mathematical contract is [STRUCTURED_RG_CONTRACT.md](STRUCTURED_RG_CONTRACT.md).
+
 ## Certified results
 
 All numbers in this table are energy per physical site.
 
 | Route | System | Certified lower bound | Certified upper bound | Rigorous gap | Reference run |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Exact-compatible RG, compressed baseline | periodic `N = 20` | `-0.4453263421613551` | `-0.4452193264937391` | `1.0767350626092332e-4` | `20260729-h7-finite-n20-dyadic-k13` |
-| Exact-compatible RG + RDM8 | periodic `N = 20` | `-0.44528862186638035` | `-0.4452193264937391` | `6.967350626092331e-5` | `20260729-h7-finite-n20-dyadic-k13` |
-| Full structured NPA + SOHS | periodic `N = 20` | `-0.44522841380294176` | `-0.4452193264937391` | `9.087309202669595e-6` | `20260729-repro-julia115-full-sohs-n20` |
+| Exact-compatible RG, compressed baseline | periodic `N = 20` | `-0.4453263421613551` | `-0.4452193264937391` | `1.070156676160054e-4` | `20260729-h7-finite-n20-dyadic-k13` |
+| Exact-compatible RG + RDM8 | periodic `N = 20` | `-0.44528862186638035` | `-0.4452193264937391` | `6.929537264127523e-5` | `20260729-h7-finite-n20-dyadic-k13` |
+| Full structured NPA + SOHS | periodic `N = 20` | `-0.44522836660051746` | `-0.4452193264937391` | `9.040106778343054e-6` | `20260730-stage-report-full-sohs-n20` |
+| Matched full structured NPA parent | periodic `N = 20` | `-0.4452272566443788` | `-0.4452193264937391` | `7.930150639712252e-6` | `20260730-structured-rg-rdm8-scaled-n20-d4-n5` |
+| Full structured NPA + exact-compatible RG/RDM8 | periodic `N = 20` | `-0.44522454084723984` | `-0.4452193264937391` | `5.214353500759827e-6` | `20260730-structured-rg-rdm8-scaled-n20-d4-n5` |
 
 The RDM8 lift raises the exact-compatible RG certificate by `3.772029497473017e-5`, reducing its finite gap by about 35%. The full structured-NPA route independently passes the `1e-5` validation gate, but it does not yet include RG coarse-graining.
+
+The unified model proves that all retained structured constraints and RG constraints can be certified together through an exact physical witness. Its raw objective improves by `3.9178868482814266e-7`; exact mixed replay improves the matched structured-NPA endpoint by `2.715797138952425e-6`. Multiplying only the `omega4` link equalities by the exact factor `16` leaves the feasible set unchanged and exposes the strict improvement by improving the numerical conditioning. Both solves are `OPTIMAL / FEASIBLE_POINT`, and the independent validator rebuilds the complete model and rejects altered coefficients or equality scales after recomputed hashes.
 
 The H0 baseline also retains a rationally post-certified order-2 structured-NPA lower bound of `-0.44993915712553295` at `N = 20`. It is a correctness reference rather than a competitive endpoint.
 
@@ -68,6 +81,8 @@ The H0 baseline also retains a rationally post-certified order-2 structured-NPA 
 | System and method | Endpoint | Status | Interpretation |
 | --- | ---: | --- | --- |
 | `N = 20`, `D = 4`, `n_super = 10` compressed | raw objective `-0.44532643488209284` | `OPTIMAL`, numerical | Establishes the predecessor used by the exact-compatible RG certificate. |
+| `N = 20`, unified structured NPA + RG/RDM8, `n_super = 5` | certified lower bound `-0.44522454084723984` | `OPTIMAL`, certified | 76,501 scalar variables; rigorous gap `5.214353500759827e-6`; strictly improves both parent routes. |
+| `N = 30`, unified structured NPA + RG/RDM8, `n_super = 5` | raw gain `2.1437405645086116e-7` | `OPTIMAL`, exploratory | Fixed-depth raw tightening persists, but same-process strict replay loses `1.3332406440951713e-5` because moment residuals grow; not a formal finite-size certificate. |
 | `N = 50`, `D = 4`, `n_super = 25` compressed | raw objective `-0.443902769427835` | `OPTIMAL`, numerical | Improves the matched `D = 3` objective by `1.1728327994980914e-3`; diagnostic finite gap `4.258676536669781e-4`. |
 | `N = 100`, `D = 4`, `n_super = 50` compressed | raw objective `-0.4438211577378427` | `OPTIMAL`, numerical | Improves the matched `D = 3` objective by `1.3336436432175303e-3`; diagnostic finite gap `5.924292490814831e-4`. |
 | `N = 100`, `D = 5`, `n_super = 40` compressed | raw objective `-0.4436360816706201` | `OPTIMAL`, numerical | Improves the deeper `D = 4`, `n_super = 50` objective by `1.850760672226226e-4`; total solve time was 911.5 s. |
@@ -97,11 +112,12 @@ The final structured-NPA screens used run names matching `20260729-h12-*`. They 
 
 ## Reproduction and provenance
 
-Generated results and coarse-grainer caches are intentionally excluded from version control. The commit contains the Julia `1.11.5` pin, package manifest, source code, tests, mathematical contracts, reference numbers, and complete commands needed to rebuild the two accepted `N = 20` certificate chains.
+Generated results and coarse-grainer caches are intentionally excluded from version control. The commit contains the Julia `1.11.5` pin, package manifest, source code, tests, mathematical contracts, reference numbers, and complete commands needed to rebuild the three accepted `N = 20` certificate chains.
 
 - `h11_full_sohs_certificate.jl` independently constructs its exact finite-energy upper endpoint, solves the selected structured-NPA model, writes the full transcript, and validates the generated result.
+- `structured_rg_local.jl --link-mode=rdm8` solves both the full structured-NPA baseline and the fused `n_super = 5` model, writes their exact transcripts, and validates the unified result against a rebuilt model.
 - The exact-compatible RG/RDM8 route is a generated H0 → H1 → H3 → H7 chain. Every stage records its explicit input paths and validates their metadata and numerical gates.
-- A fresh Julia `1.11.5` H11 run reproduced the reported numerical objective, certified lower endpoint, exact upper endpoint, and `9.087309202669595e-6` gap; its full replay and tamper suite passed 32 tests.
+- A fresh Julia `1.11.5` H11 run reproduced the numerical objective, current energy-aware certified lower endpoint, exact upper endpoint, and `9.040106778343054e-6` gap. The generator immediately rebuilt and validated the complete model; the optional replay command exercises the additional tamper suite.
 - A fresh fixed-seed D=3 VUMPS run and H0 ladder also reproduced all four OPTIMAL compressed points and the rationally post-certified structured-NPA baseline.
 - The historical run names in the tables identify the runs from which the quoted numbers were taken; they are report labels, not committed directories.
 - [scripts/heisenberg1d/README.md](../scripts/heisenberg1d/README.md) contains the clean-clone reproduction commands and the optional post-generation replay commands.
@@ -112,12 +128,13 @@ The `N = 50` and `N = 100` entries are historical numerical screening evidence, 
 
 | Rung | Current state | Gate |
 | --- | --- | --- |
-| `N = 20` | certified by two routes | Full structured NPA passes `1e-5`; RG/RDM8 is certified at `6.97e-5`. |
-| `N = 50` | numerical screens only | Need `OPTIMAL` termination, a stricter model with predicted gap near `1e-5`, and exact post-certification. |
+| `N = 20` | certified by three routes | The unified route is the tightest, passes `1e-5` at `5.21e-6`, and strictly improves both parent methods. |
+| `N = 30` | fixed-depth exploratory screen | Need the `n_super = 8` fixed-coverage point to determine whether deeper RG offsets residual growth. |
+| `N = 50` | numerical screens only | Proceed only after the `N = 30`, `n_super = 8` strict trend gate passes. |
 | `N = 100` | high-memory RG numerical screen only | Need a strict certificate before its gap can be claimed. |
 | `N = 200` | not run | Launch only after a smaller rung demonstrates both accuracy and a credible resource projection. |
 
-The next work should remain local: improve conditioning and constraint selection for the `N = 50` structured-NPA model, or optimize an exactly representable RG map using the cheap local and `N = 20` certificate gates. High-performance computing becomes justified for the RG ladder only after one of those method gates predicts that `N = 200` can meet the accuracy target.
+The local fusion gate is complete. The next work should measure two separate size trends with the same exact scaling: fixed depth `(N, n_super) = (20, 5), (30, 5), (40, 5)` and fixed physical coverage `(30, 8), (40, 10)`. Fixed depth does not currently show an increasing benefit with `N`; the raw gain falls from `3.9178868482814266e-7` at `N = 20` to `2.1437405645086116e-7` at `N = 30`, while the strict residual tax grows. High-performance computing becomes justified only if increasing RG coverage preserves a positive strict gain and gives a credible projection toward `N = 200`.
 
 ## Validation commands
 
@@ -128,8 +145,9 @@ julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_metadata.j
 julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_h4.jl
 julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_rg_rdm8.jl
 julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_h11_full_sohs.jl
+julia +1.11.5 --startup-file=no --project=. scripts/heisenberg1d/test_structured_rg_hybrid.jl
 ```
 
 After generating a certificate, pass its result path to the corresponding test entrypoint for full transcript replay and tamper checks.
 
-The mathematical contracts are [FINITE_SIZE_CONTRACT.md](FINITE_SIZE_CONTRACT.md), [HYBRID_RDM_CONTRACT.md](HYBRID_RDM_CONTRACT.md), [DUAL_POSTCERTIFICATION_CONTRACT.md](DUAL_POSTCERTIFICATION_CONTRACT.md), [HIGHER_D_CONTRACT.md](HIGHER_D_CONTRACT.md), and [FULL_SOHS_CERTIFICATE.md](FULL_SOHS_CERTIFICATE.md).
+The mathematical contracts are [FINITE_SIZE_CONTRACT.md](FINITE_SIZE_CONTRACT.md), [HYBRID_RDM_CONTRACT.md](HYBRID_RDM_CONTRACT.md), [DUAL_POSTCERTIFICATION_CONTRACT.md](DUAL_POSTCERTIFICATION_CONTRACT.md), [HIGHER_D_CONTRACT.md](HIGHER_D_CONTRACT.md), [FULL_SOHS_CERTIFICATE.md](FULL_SOHS_CERTIFICATE.md), and [STRUCTURED_RG_CONTRACT.md](STRUCTURED_RG_CONTRACT.md).

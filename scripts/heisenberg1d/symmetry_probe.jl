@@ -10,7 +10,8 @@ using MPSKit, MPSKitModels, TensorKit
 
 BLAS.set_num_threads(1)
 
-include(joinpath(@__DIR__, "t2t3_compressed_lti.jl"))
+isdefined(@__MODULE__, :BOUNDGSENERGY_ROOT) ||
+    include(joinpath(@__DIR__, "t2t3_compressed_lti.jl"))
 
 const H1_D = 4
 const H1_DEFAULT_N_SUPER = 4
@@ -90,8 +91,14 @@ end
 
 function load_or_build_coarse_grainer()
     if isfile(H1_COARSE_GRAINER_PATH)
-        B, metadata = deserialize(H1_COARSE_GRAINER_PATH)
-        return B, metadata, true
+        try
+            B, metadata = deserialize(H1_COARSE_GRAINER_PATH)
+            get(metadata, "julia_version", nothing) == string(VERSION) ||
+                error("cached coarse-grainer was built with another Julia version")
+            return B, metadata, true
+        catch error
+            @warn "rebuilding incompatible coarse-grainer cache" exception=(error, catch_backtrace())
+        end
     end
     B, metadata = build_coarse_grainer()
     mkpath(dirname(H1_COARSE_GRAINER_PATH))
