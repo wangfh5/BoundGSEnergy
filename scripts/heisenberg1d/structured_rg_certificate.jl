@@ -1,5 +1,7 @@
 # Exact mixed SOHS/RG certificate for the structured-NPA + RG formulation.
 
+using SparseArrays
+
 include(joinpath(@__DIR__, "structured_rg_hybrid.jl"))
 
 const STRUCTURED_RG_ENERGY_TOLERANCE = 2e-7
@@ -30,11 +32,17 @@ function structured_rg_affine_transcript(
     )
 end
 
-function structured_rg_psd_variable_blocks(model, variable_indices)
+function structured_rg_psd_variable_blocks(
+    model,
+    variable_indices;
+    constraint_occurrences=nothing,
+)
     blocks = NamedTuple[]
     covered = Set{Int}()
     for constraint in
         all_constraints(model, Vector{VariableRef}, MOI.PositiveSemidefiniteConeTriangle)
+        isnothing(constraint_occurrences) ||
+            push!(constraint_occurrences, constraint)
         object = constraint_object(constraint)
         dimension = MOI.side_dimension(object.set)
         matrix = reshape_vector(
@@ -66,6 +74,8 @@ function structured_rg_omega_slacks(
     primal_model,
     dual_model,
     variable_indices,
+    ;
+    constraint_occurrences=nothing,
 )
     slacks = NamedTuple[]
     for primal_constraint in
@@ -76,6 +86,8 @@ function structured_rg_omega_slacks(
             Dualization._get_dual_constraint(dual_model, primal_block[1, 1])
         dual_constraint isa ConstraintRef ||
             error("RG PSD block is not represented by a dual slack constraint")
+        isnothing(constraint_occurrences) ||
+            push!(constraint_occurrences, dual_constraint)
         dual_object = constraint_object(dual_constraint)
         dual_object.func isa Vector{AffExpr} ||
             error("RG dual slack is not affine")
@@ -110,6 +122,68 @@ function structured_rg_omega_slacks(
     slacks
 end
 
+function structured_rg_constraint_partition_audit(
+    dual_model,
+    moment_occurrences,
+    sohs_occurrences,
+    omega_occurrences,
+)
+    supported_types = Set([
+        (AffExpr, MOI.EqualTo{Float64}),
+        (
+            Vector{VariableRef},
+            MOI.PositiveSemidefiniteConeTriangle,
+        ),
+        (
+            Vector{AffExpr},
+            MOI.PositiveSemidefiniteConeTriangle,
+        ),
+    ])
+    Set(list_of_constraint_types(dual_model)) == supported_types ||
+        error("structured-RG dual contains an unpartitioned constraint type")
+
+    equalities = all_constraints(
+        dual_model,
+        AffExpr,
+        MOI.EqualTo{Float64},
+    )
+    equality_occurrences = Any[
+        (constraint, 1)
+        for constraint in equalities
+    ]
+    length(moment_occurrences) ==
+    length(Set(moment_occurrences)) ||
+        error("a structured-RG moment equality was enumerated more than once")
+    Set(moment_occurrences) == Set(equality_occurrences) ||
+        error("structured-RG moment equalities do not partition the dual equalities")
+
+    sohs_constraints = all_constraints(
+        dual_model,
+        Vector{VariableRef},
+        MOI.PositiveSemidefiniteConeTriangle,
+    )
+    length(sohs_occurrences) == length(Set(sohs_occurrences)) ||
+        error("a structured-RG SOHS constraint was enumerated more than once")
+    Set(sohs_occurrences) == Set(sohs_constraints) ||
+        error("structured-RG PSD blocks do not partition the variable PSD constraints")
+
+    omega_constraints = all_constraints(
+        dual_model,
+        Vector{AffExpr},
+        MOI.PositiveSemidefiniteConeTriangle,
+    )
+    length(omega_occurrences) == length(Set(omega_occurrences)) ||
+        error("a structured-RG omega slack was enumerated more than once")
+    Set(omega_occurrences) == Set(omega_constraints) ||
+        error("structured-RG omega slacks do not partition the affine PSD constraints")
+    (
+        equality_component_count=length(equality_occurrences),
+        sohs_constraint_count=length(sohs_constraints),
+        omega_constraint_count=length(omega_constraints),
+        constraint_type_count=length(supported_types),
+    )
+end
+
 function structured_rg_model_structure(
     primal_model,
     dual_model,
@@ -121,15 +195,30 @@ function structured_rg_model_structure(
     super_charges=STRUCTURED_RG_SUPER_CHARGES,
     ;
     link_mode=:rho3,
+    omega_normalization=:none,
 )
     link_mode in (:rho3, :rdm8) ||
         error("unsupported structured-RG link mode")
+    link_mode == :rho3 && omega_normalization != :none &&
+        error("omega normalization is only supported for the RDM8 link")
     site_count = link_mode == :rho3 ? 6 : 8
+    version = link_mode == :rho3 ? 3 :
+        omega_normalization == :none ? 4 : 5
+    omega_trace_scales = link_mode == :rdm8 ?
+        structured_rg_omega_trace_scales(
+            B,
+            n_super,
+            omega_normalization,
+        ) :
+        Float64[]
+    rdm8_link_scales =
+        structured_rg_rdm8_link_scales(omega_normalization)
     objective_sense(dual_model) == MOI.MAX_SENSE ||
         error("structured-RG certificate requires a maximization dual")
     variables = all_variables(dual_model)
     variable_indices =
         Dict(variable => index for (index, variable) in enumerate(variables))
+    moment_occurrences = Any[]
     moment_equalities = [
         let
             constraint, component =
@@ -138,6 +227,7 @@ function structured_rg_model_structure(
                 error("structured moment is not represented in the hybrid dual")
             expression, rhs =
                 structured_rg_constraint_expression(constraint, component)
+            push!(moment_occurrences, (constraint, 1))
             structured_rg_affine_transcript(
                 expression,
                 rhs,
@@ -148,8 +238,27 @@ function structured_rg_model_structure(
     ]
     length(moment_equalities) == length(structured.canonical_words) ||
         error("structured-RG moment equalities do not match canonical words")
-    (
-        version=link_mode == :rho3 ? 3 : 4,
+    sohs_occurrences = Any[]
+    omega_occurrences = Any[]
+    psd_variable_blocks = structured_rg_psd_variable_blocks(
+        dual_model,
+        variable_indices;
+        constraint_occurrences=sohs_occurrences,
+    )
+    omega_slacks = structured_rg_omega_slacks(
+        primal_model,
+        dual_model,
+        variable_indices;
+        constraint_occurrences=omega_occurrences,
+    )
+    structured_rg_constraint_partition_audit(
+        dual_model,
+        moment_occurrences,
+        sohs_occurrences,
+        omega_occurrences,
+    )
+    structure = (
+        version=version,
         julia_version=string(VERSION),
         qmbcertify_source_sha256=H11_QMB_SOURCE_SHA256,
         qmbcertify_source_tree_sha256=H11_QMB_SOURCE_TREE_SHA256,
@@ -165,13 +274,13 @@ function structured_rg_model_structure(
         equality_scale=H11_EQUALITY_SCALE,
         rg_equality_scale=STRUCTURED_RG_EQUALITY_SCALE,
         local_link_scale=link_mode == :rdm8 ?
-            STRUCTURED_RG_RDM8_LOCAL_LINK_SCALE :
+            rdm8_link_scales.local_link :
             STRUCTURED_RG_EQUALITY_SCALE,
         omega4_link_scale=link_mode == :rdm8 ?
-            STRUCTURED_RG_RDM8_OMEGA4_LINK_SCALE :
+            rdm8_link_scales.omega4 :
             STRUCTURED_RG_EQUALITY_SCALE,
         recursion_scale=link_mode == :rdm8 ?
-            STRUCTURED_RG_RDM8_RECURSION_SCALE :
+            rdm8_link_scales.recursion :
             STRUCTURED_RG_EQUALITY_SCALE,
         coarse_grainer_fingerprint=bytes2hex(sha1(reinterpret(UInt8, vec(B)))),
         coarse_grainer=copy(B),
@@ -182,14 +291,18 @@ function structured_rg_model_structure(
         objective=h11_objective_transcript(dual_model, variable_indices),
         canonical_words=[Int.(word) for word in structured.canonical_words],
         moment_equalities=moment_equalities,
-        psd_variable_blocks=
-            structured_rg_psd_variable_blocks(dual_model, variable_indices),
-        omega_slacks=structured_rg_omega_slacks(
-            primal_model,
-            dual_model,
-            variable_indices,
-        ),
+        psd_variable_blocks=psd_variable_blocks,
+        omega_slacks=omega_slacks,
     )
+    version == 5 ?
+        merge(
+            structure,
+            (
+                omega_normalization=string(omega_normalization),
+                omega_trace_scales=omega_trace_scales,
+            ),
+        ) :
+        structure
 end
 
 const STRUCTURED_RG_MODEL_STRUCTURE_FIELDS = (
@@ -251,7 +364,7 @@ function structured_rg_validate_local_rdm_audit(structure)
     audit.status == "PROVEN" ||
         error("structured local-RDM exactness audit did not pass")
     expected_site_count = structure.version == 3 ? 6 :
-        structure.version == 4 ? 8 :
+        structure.version in (4, 5) ? 8 :
         error("unsupported structured-RG transcript version")
     audit.site_count == expected_site_count ||
         error("structured local-RDM audit has the wrong support")
@@ -273,7 +386,14 @@ function structured_rg_validate_local_rdm_audit(structure)
 end
 
 function structured_rg_validate_model_binding(transcript, expected)
-    for field in STRUCTURED_RG_MODEL_STRUCTURE_FIELDS
+    fields = transcript.version == 5 ?
+        (
+            STRUCTURED_RG_MODEL_STRUCTURE_FIELDS...,
+            :omega_normalization,
+            :omega_trace_scales,
+        ) :
+        STRUCTURED_RG_MODEL_STRUCTURE_FIELDS
+    for field in fields
         hasproperty(transcript, field) ||
             error("structured-RG transcript is missing $field")
         getproperty(transcript, field) == getproperty(expected, field) ||
@@ -290,7 +410,7 @@ function structured_rg_rebuild_model_structure(transcript)
     validate_structured_rg_support(transcript.n_super)
     structured = build_structured_moment_model()
     site_count = transcript.version == 3 ? 6 :
-        transcript.version == 4 ? 8 :
+        transcript.version in (4, 5) ? 8 :
         error("unsupported structured-RG transcript version")
     local_rdm = structured_local_rdm(
         structured.physical_moments,
@@ -307,6 +427,9 @@ function structured_rg_rebuild_model_structure(transcript)
             transcript.super_charges,
         )
     else
+        omega_normalization = transcript.version == 5 ?
+            Symbol(transcript.omega_normalization) :
+            :none
         add_rdm8_rg_hierarchy!(
             structured.model,
             local_rdm,
@@ -317,6 +440,7 @@ function structured_rg_rebuild_model_structure(transcript)
             local_link_scale=transcript.local_link_scale,
             omega4_link_scale=transcript.omega4_link_scale,
             recursion_scale=transcript.recursion_scale,
+            omega_normalization=omega_normalization,
         )
     end
     dual_model = dualize(structured.model)
@@ -330,6 +454,9 @@ function structured_rg_rebuild_model_structure(transcript)
         transcript.virtual_charges,
         transcript.super_charges,
         link_mode=transcript.version == 3 ? :rho3 : :rdm8,
+        omega_normalization=transcript.version == 5 ?
+            Symbol(transcript.omega_normalization) :
+            :none,
     )
 end
 
@@ -368,7 +495,7 @@ function evaluate_structured_rg_transcript(
     eig_prec=256,
 )
     structured_rg_validate_model_binding(transcript, expected_structure)
-    transcript.version in (3, 4) ||
+    transcript.version in (3, 4, 5) ||
         error("unsupported structured-RG transcript version")
     transcript.julia_version == string(PINNED_JULIA_VERSION) ||
         error("structured-RG transcript has the wrong Julia version")
@@ -388,18 +515,27 @@ function evaluate_structured_rg_transcript(
             STRUCTURED_RG_EQUALITY_SCALE,
             STRUCTURED_RG_EQUALITY_SCALE,
             STRUCTURED_RG_EQUALITY_SCALE,
-        ) :
-        (
-            STRUCTURED_RG_RDM8_LOCAL_LINK_SCALE,
-            STRUCTURED_RG_RDM8_OMEGA4_LINK_SCALE,
-            STRUCTURED_RG_RDM8_RECURSION_SCALE,
+        ) : let scales = structured_rg_rdm8_link_scales(
+            transcript.version == 5 ? :dyadic_trace : :none,
         )
+            (scales.local_link, scales.omega4, scales.recursion)
+        end
     (
         transcript.local_link_scale,
         transcript.omega4_link_scale,
         transcript.recursion_scale,
     ) == expected_scales ||
         error("structured-RG link scales are stale")
+    if transcript.version == 5
+        transcript.omega_normalization == "dyadic_trace" ||
+            error("structured-RG omega normalization is stale")
+        transcript.omega_trace_scales ==
+        structured_rg_omega_trace_scales(
+            transcript.coarse_grainer,
+            transcript.n_super,
+            :dyadic_trace,
+        ) || error("structured-RG omega trace scales are stale")
+    end
     length(transcript.raw_values) == transcript.variable_count ||
         error("structured-RG transcript has stale variable values")
     length(transcript.moment_equalities) ==
@@ -501,17 +637,367 @@ function evaluate_structured_rg_transcript(
     )
 end
 
-function structured_rg_trace_bounds(B, n_super; link_mode=:rho3)
+function structured_rg_term_indices(
+    expression,
+    variable_count;
+    nonzero_only=false,
+)
+    indices = Set{Int}()
+    for (index, coefficient) in expression.terms
+        1 <= index <= variable_count ||
+            error("structured-RG transcript contains an invalid variable index")
+        nonzero_only && iszero(coefficient) && continue
+        push!(indices, index)
+    end
+    indices
+end
+
+function structured_rg_polishing_variable_audit(transcript)
+    length(transcript.canonical_words) >= 3 ||
+        error("structured-RG polishing requires non-Hamiltonian moments")
+    transcript.canonical_words[1] == Int[] ||
+        error("structured-RG polishing found a stale identity word")
+    transcript.canonical_words[2] == H11_HAMILTONIAN_WORD ||
+        error("structured-RG polishing found a stale Hamiltonian word")
+
+    variable_count = transcript.variable_count
+    objective_terms = structured_rg_term_indices(
+        transcript.objective,
+        variable_count,
+    )
+    objective = structured_rg_term_indices(
+        transcript.objective,
+        variable_count;
+        nonzero_only=true,
+    )
+    identity = structured_rg_term_indices(
+        transcript.moment_equalities[1],
+        variable_count,
+    )
+    hamiltonian = structured_rg_term_indices(
+        transcript.moment_equalities[2],
+        variable_count,
+    )
+    other_moment_terms = Set{Int}()
+    other_moments = Set{Int}()
+    for equality in transcript.moment_equalities[3:end]
+        union!(
+            other_moment_terms,
+            structured_rg_term_indices(
+                equality,
+                variable_count,
+            ),
+        )
+        union!(
+            other_moments,
+            structured_rg_term_indices(
+                equality,
+                variable_count,
+                nonzero_only=true,
+            ),
+        )
+    end
+
+    psd = Set{Int}()
+    for block in transcript.psd_variable_blocks
+        size(block.variable_indices) ==
+        (block.dimension, block.dimension) ||
+            error("structured-RG transcript has a malformed PSD block")
+        for index in block.variable_indices
+            1 <= index <= variable_count ||
+                error("structured-RG PSD block contains an invalid variable index")
+            push!(psd, index)
+        end
+    end
+    omega = Set{Int}()
+    for slack in transcript.omega_slacks
+        for entry in slack.upper_entries
+            union!(
+                omega,
+                structured_rg_term_indices(
+                    entry,
+                    variable_count,
+                ),
+            )
+        end
+    end
+
+    covered = union(
+        objective_terms,
+        identity,
+        hamiltonian,
+        other_moment_terms,
+        psd,
+        omega,
+    )
+    covered == Set(1:variable_count) ||
+        error("structured-RG polishing audit did not cover every dual variable")
+    forbidden = union(objective, identity, hamiltonian, psd, omega)
+    safe = sort!(collect(setdiff(other_moments, forbidden)))
+    for index in safe
+        index in psd &&
+            error("a polishing variable belongs to a PSD block")
+        index in omega &&
+            error("a polishing variable occurs in an RG slack")
+        index in objective &&
+            error("a polishing variable has a nonzero objective coefficient")
+        (index in identity || index in hamiltonian) &&
+            error("a polishing variable occurs in a protected moment equality")
+        index in other_moments ||
+            error("a polishing variable does not affect a target residual")
+    end
+    (
+        safe_variable_indices=safe,
+        variable_count=variable_count,
+        covered_variable_count=length(covered),
+        objective_variable_count=length(objective),
+        protected_moment_variable_count=
+            length(union(identity, hamiltonian)),
+        psd_variable_count=length(psd),
+        omega_slack_variable_count=length(omega),
+    )
+end
+
+function structured_rg_sparse_minimum_norm(
+    matrix::SparseMatrixCSC{Float64, Int},
+    target::Vector{Float64},
+)
+    size(matrix, 1) == length(target) ||
+        error("structured-RG polishing system has inconsistent dimensions")
+    solution = zeros(Float64, size(matrix, 2))
+    residual = copy(target)
+    gradient = transpose(matrix) * residual
+    direction = copy(gradient)
+    gradient_norm_squared = dot(gradient, gradient)
+    initial_gradient_norm = sqrt(gradient_norm_squared)
+    initial_residual_norm = norm(residual)
+    if iszero(gradient_norm_squared)
+        return (
+            solution=solution,
+            iterations=0,
+            initial_residual_norm=initial_residual_norm,
+            final_residual_norm=initial_residual_norm,
+        )
+    end
+
+    tolerance = max(
+        1e-12 * initial_gradient_norm,
+        eps(Float64) * initial_gradient_norm,
+    )
+    maximum_iterations = min(
+        2000,
+        max(20, 2 * min(size(matrix)...)),
+    )
+    iterations = 0
+    for iteration in 1:maximum_iterations
+        image = matrix * direction
+        denominator = dot(image, image)
+        isfinite(denominator) && denominator > 0 || break
+        step = gradient_norm_squared / denominator
+        isfinite(step) || break
+        solution .+= step .* direction
+        residual .-= step .* image
+        next_gradient = transpose(matrix) * residual
+        next_norm_squared = dot(next_gradient, next_gradient)
+        isfinite(next_norm_squared) || break
+        iterations = iteration
+        sqrt(next_norm_squared) <= tolerance && break
+        direction .=
+            next_gradient .+
+            (next_norm_squared / gradient_norm_squared) .* direction
+        gradient_norm_squared = next_norm_squared
+    end
+    (
+        solution=solution,
+        iterations=iterations,
+        initial_residual_norm=initial_residual_norm,
+        final_residual_norm=norm(residual),
+    )
+end
+
+function structured_rg_polishing_system(
+    transcript,
+    evaluated,
+    safe_variable_indices,
+)
+    positions = Dict(
+        index => column
+        for (column, index) in enumerate(safe_variable_indices)
+    )
+    rows = Int[]
+    columns = Int[]
+    coefficients = Float64[]
+    target_rows = Int[]
+    scale = transcript.equality_scale
+    for row in 3:length(transcript.moment_equalities)
+        row_terms = Tuple{Int, Float64}[]
+        for (index, coefficient) in
+            transcript.moment_equalities[row].terms
+            haskey(positions, index) || continue
+            scaled_coefficient = Float64(coefficient) / scale
+            iszero(scaled_coefficient) ||
+                push!(
+                    row_terms,
+                    (positions[index], scaled_coefficient),
+                )
+        end
+        isempty(row_terms) && continue
+        push!(target_rows, row)
+        active_row = length(target_rows)
+        for (column, coefficient) in row_terms
+            push!(rows, active_row)
+            push!(columns, column)
+            push!(coefficients, coefficient)
+        end
+    end
+    matrix = sparse(
+        rows,
+        columns,
+        coefficients,
+        length(target_rows),
+        length(safe_variable_indices),
+    )
+    target = Float64[
+        -evaluated.moment_residuals[row]
+        for row in target_rows
+    ]
+    matrix, target, target_rows
+end
+
+function structured_rg_validate_polishing_invariants(
+    original,
+    candidate,
+)
+    candidate.objective == original.objective ||
+        error("structured-RG polishing changed the exact objective")
+    candidate.sohs_groups == original.sohs_groups ||
+        error("structured-RG polishing changed an SOHS PSD block")
+    candidate.rg_groups == original.rg_groups ||
+        error("structured-RG polishing changed an RG slack")
+    candidate.rg_correction == original.rg_correction ||
+        error("structured-RG polishing changed the RG correction")
+    candidate.moment_residuals[1:2] ==
+    original.moment_residuals[1:2] ||
+        error("structured-RG polishing changed a protected moment residual")
+    true
+end
+
+function structured_rg_accept_polished_replay(original, candidate)
+    structured_rg_validate_polishing_invariants(original, candidate)
+    candidate.certified > original.certified
+end
+
+function structured_rg_polish_transcript(
+    transcript,
+    expected_structure,
+    trace_bounds;
+    eig_prec=256,
+)
+    original = evaluate_structured_rg_transcript(
+        transcript,
+        expected_structure,
+        trace_bounds;
+        eig_prec=eig_prec,
+    )
+    audit = structured_rg_polishing_variable_audit(transcript)
+    matrix, target, target_rows = structured_rg_polishing_system(
+        transcript,
+        original,
+        audit.safe_variable_indices,
+    )
+    if isempty(audit.safe_variable_indices) || isempty(target_rows)
+        report = merge(
+            audit,
+            (
+                attempted=false,
+                accepted=false,
+                target_residual_count=length(target_rows),
+                iterations=0,
+                initial_target_l2=0.0,
+                candidate_target_l2=0.0,
+                original_certified=original.certified,
+                candidate_certified=original.certified,
+            ),
+        )
+        return (
+            transcript=transcript,
+            evaluated=original,
+            report=report,
+        )
+    end
+
+    numerical = structured_rg_sparse_minimum_norm(matrix, target)
+    candidate_values = copy(transcript.raw_values)
+    for (column, index) in enumerate(audit.safe_variable_indices)
+        value = candidate_values[index] + numerical.solution[column]
+        isfinite(value) ||
+            error("structured-RG polishing produced a nonfinite candidate")
+        rationalized = exact_rational(value)
+        candidate_values[index] = Float64(rationalized)
+        exact_rational(candidate_values[index]) == rationalized ||
+            error("structured-RG polishing candidate did not round-trip exactly")
+    end
+    candidate_transcript = merge(
+        transcript,
+        (raw_values=candidate_values,),
+    )
+    candidate = evaluate_structured_rg_transcript(
+        candidate_transcript,
+        expected_structure,
+        trace_bounds;
+        eig_prec=eig_prec,
+    )
+    accepted =
+        structured_rg_accept_polished_replay(original, candidate)
+    report = merge(
+        audit,
+        (
+            attempted=true,
+            accepted=accepted,
+            target_residual_count=length(target_rows),
+            iterations=numerical.iterations,
+            initial_target_l2=numerical.initial_residual_norm,
+            candidate_target_l2=numerical.final_residual_norm,
+            original_certified=original.certified,
+            candidate_certified=candidate.certified,
+        ),
+    )
+    (
+        transcript=accepted ? candidate_transcript : transcript,
+        evaluated=accepted ? candidate : original,
+        report=report,
+    )
+end
+
+function structured_rg_trace_bounds(
+    B,
+    n_super;
+    link_mode=:rho3,
+    omega_normalization=:none,
+)
     link_mode in (:rho3, :rdm8) ||
         error("unsupported structured-RG link mode")
+    omega_normalization in STRUCTURED_RG_OMEGA_NORMALIZATIONS ||
+        error("omega_normalization must be none or dyadic_trace")
+    link_mode == :rho3 && omega_normalization != :none &&
+        error("omega normalization is only supported for the RDM8 link")
     compressed = compressed_trace_bounds(B, n_super)
     bounds = Dict{String, ExactRational}(
         link_mode == :rho3 ?
             "hybrid_rho3" => compressed["rho3"] :
             "hybrid_rho4" => 1 // 1,
     )
-    for depth in 4:n_super
-        bounds["hybrid_omega$(depth)"] = compressed["omega$(depth)"]
+    omega_trace_scales = link_mode == :rdm8 ?
+        structured_rg_omega_trace_scales(
+            B,
+            n_super,
+            omega_normalization,
+        ) :
+        ones(n_super - 3)
+    for (index, depth) in enumerate(4:n_super)
+        bounds["hybrid_omega$(depth)"] =
+            compressed["omega$(depth)"] /
+            exact_rational(omega_trace_scales[index])
     end
     bounds
 end
@@ -526,6 +1012,7 @@ function structured_rg_certificate(
     transcript_path,
     ;
     link_mode=:rho3,
+    omega_normalization=:none,
 )
     structure = structured_rg_model_structure(
         primal_model,
@@ -535,17 +1022,26 @@ function structured_rg_certificate(
         B,
         n_super,
         link_mode=link_mode,
+        omega_normalization=omega_normalization,
     )
     transcript = merge(
         structure,
         (raw_values=Float64[value(variable) for variable in all_variables(dual_model)],),
     )
-    atomic_serialize(transcript_path, transcript)
-    evaluated = evaluate_structured_rg_transcript(
+    trace_bounds = structured_rg_trace_bounds(
+        B,
+        n_super;
+        link_mode=link_mode,
+        omega_normalization=omega_normalization,
+    )
+    polished = structured_rg_polish_transcript(
         transcript,
         structure,
-        structured_rg_trace_bounds(B, n_super; link_mode=link_mode),
+        trace_bounds,
     )
+    transcript = polished.transcript
+    evaluated = polished.evaluated
+    atomic_serialize(transcript_path, transcript)
     published = decimal_floor(evaluated.certified; digits=9)
     Dict(
         "status" => "CERTIFIED",
@@ -614,6 +1110,9 @@ function structured_rg_replay_transcript(certificate, label; expected_structure=
             transcript.coarse_grainer,
             transcript.n_super,
             link_mode=transcript.version == 3 ? :rho3 : :rdm8,
+            omega_normalization=transcript.version == 5 ?
+                Symbol(transcript.omega_normalization) :
+                :none,
         ),
     )
     parse_exact_rational(certificate["solver_objective_rational"]) ==
@@ -835,6 +1334,12 @@ function validated_structured_rg_result(
     link_mode = Symbol(get(meta, "link_mode", "rho3"))
     link_mode in (:rho3, :rdm8) ||
         error("$label link mode is stale")
+    omega_normalization =
+        Symbol(get(meta, "omega_normalization", "none"))
+    omega_normalization in STRUCTURED_RG_OMEGA_NORMALIZATIONS ||
+        error("$label omega normalization is stale")
+    link_mode == :rho3 && omega_normalization != :none &&
+        error("$label rho3 link cannot normalize omega variables")
     record["baseline"]["status"] == "OPTIMAL" ||
         error("$label baseline did not terminate OPTIMAL")
     record["hybrid"]["status"] == "OPTIMAL" ||
@@ -869,8 +1374,15 @@ function validated_structured_rg_result(
         error("$label transcript system size is stale")
     transcript.n_super == meta["n_super"] ||
         error("$label transcript hierarchy depth is stale")
-    transcript.version == (link_mode == :rho3 ? 3 : 4) ||
+    expected_version = link_mode == :rho3 ? 3 :
+        omega_normalization == :none ? 4 : 5
+    transcript.version == expected_version ||
         error("$label transcript link mode is stale")
+    if expected_version == 5
+        get(meta, "omega_trace_scales", nothing) ==
+        transcript.omega_trace_scales ||
+            error("$label omega trace scales are stale")
+    end
     for field in (
         "local_link_scale",
         "omega4_link_scale",

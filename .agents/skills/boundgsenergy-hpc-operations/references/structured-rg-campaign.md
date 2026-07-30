@@ -8,12 +8,15 @@ The ratified scientific gate is N=30, `n_super=8`. Run it before treating larger
 
 ## Parameter set
 
-Use the accepted model family unchanged: order 4, `extra=1`, RDM9, PSO3, LSO, 13-bit dyadic D=4 map, RDM8 link, and equality scales `(1,16,1)`. Bond dimension is fixed at D=4. The small sweep axis is `n_super`, whose physical support is `2*n_super`.
+Use the accepted model family unchanged: order 4, `extra=1`, RDM9, PSO3, LSO, 13-bit dyadic D=4 map, and the RDM8 link. Bond dimension is fixed at D=4. The small sweep axis is `n_super`, whose physical support is `2*n_super`. Unnormalized runs use equality scales `(1,16,1)`; normalized recovery runs use the exact power-of-two scales `(1,32,8)` to balance the normalized RG columns without introducing depth-dependent row growth.
+
+Scale-stable recovery runs must set `BGE_OMEGA_NORMALIZATION=dyadic_trace`. This applies the exact positive power-of-two substitution `omega_tilde[k]=omega[k]/alpha[k]`, with the analytic trace bound divided by the same `alpha[k]`; it changes neither the feasible set nor the strict correction. Select `BGE_COEFFICIENT_SCALE` at N=20 from the small set `512, 2048, 16384`, then keep the selected value fixed through N=30 and larger gates. Do not weaken RDM9, PSO3, LSO, solver-status requirements, or exact replay to make a large point terminate.
 
 Recommended points:
 
 | Purpose | N | n_super | Notes |
 |---|---:|---:|---|
+| Numerical scale control | 20 | 5 | Select the coefficient scale using raw-objective agreement and strict replay loss |
 | Scientific gate | 30 | 8 | Must have positive strict improvement before a certification-scale claim |
 | N=50 fixed-depth control | 50 | 5 | Separates size growth from RG coverage |
 | N=50 proportional coverage | 50 | 13 | Main N=50 point |
@@ -26,12 +29,13 @@ Use separate single-node jobs because the memory needs differ:
 
 | Point | Partition | CPUs / Mosek threads | Memory | Walltime |
 |---|---|---:|---:|---:|
-| N=30, k=8 | `64c512g` | 16 | 64G | 06:00:00 |
-| N=50, k=5 or 13 | `64c512g` | 20 | 128G | 12:00:00 |
-| N=100, k=25 | `64c512g` | 40 | 256G | 2-00:00:00 |
+| N=20, k=5 control | `64c512g` | 8 | 48G | 02:00:00 |
+| N=30, k=8 | `64c512g` | 12 | 48G | 01:00:00 |
+| N=50, k=5 or 13 | `64c512g` | 12 | 96G | 02:00:00 |
+| N=100, k=25 | `64c512g` | 32 | 256G | 12:00:00 |
 | N=200, k=50 | `64c512g` | 64 | 480G | 7-00:00:00 |
 
-These CPU counts keep every request below the partition's 8,000 MB-per-CPU ceiling. They are conservative first requests, not measured peaks. After completion, use `sacct MaxRSS` to right-size later runs. Move N=200 to `huge` only after a documented OOM or a measured projection above one 512 GB node.
+These CPU counts keep every request at or below the partition's 8,000 MB-per-CPU ceiling and favor campaign-level parallelism over ineffective inner-solver oversubscription. MOSEK uses `SLURM_CPUS_PER_TASK`, while Julia model construction and exact replay remain mostly serial. Use shared nodes by default; test `--exclusive` or explicit CPU binding only as a measured performance A/B after the numerical Gate passes. After completion, use `sacct MaxRSS` to right-size later runs. Move N=200 to `huge` only after N=100 passes and a documented OOM or measured projection exceeds one 512 GB node.
 
 ## Submission workflow
 
@@ -45,10 +49,10 @@ For each point, construct an exact command of this form:
 
 ```bash
 run-remote -H siyuan sbatch --test-only \
-  --partition=64c512g --qos=normal --nodes=1 \
+  --partition=64c512g --qos=normal --nodes=1 --ntasks=1 \
   --cpus-per-task=<cpus> --mem=<memory> --time=<walltime> \
   --job-name=bge-n<N>-k<K> --output=slurm-%x-%j.out \
-  --export=ALL,BGE_SYSTEM_SIZE=<N>,BGE_N_SUPER=<K>,BGE_RUN_NAME=<campaign>-n<N>-k<K> \
+  --export=ALL,BGE_SYSTEM_SIZE=<N>,BGE_N_SUPER=<K>,BGE_RUN_NAME=<campaign>-n<N>-k<K>,BGE_COEFFICIENT_SCALE=<scale>,BGE_OMEGA_NORMALIZATION=dyadic_trace,BGE_SOLVER_LOG=1,BGE_FEASIBILITY_TOLERANCE=1e-7 \
   .agents/skills/boundgsenergy-hpc-operations/scripts/structured-rg-size-screen.sbatch
 ```
 
@@ -64,9 +68,11 @@ For each completed job:
 2. `results/<run>/size_screen.json` exists and parses.
 3. All three solves report `OPTIMAL`.
 4. `raw_monotonicity_passed`, `fusion_dominates_rg_only`, `all_raw_objectives_below_finite_reference`, `local_rdm_exactness_passed`, and `physical_relaxation_compatibility_proven` are true.
-5. Report raw and strict improvement separately.
-6. A negative `strict_improvement` is a valid scientific outcome, not an operational failure.
-7. Keep `formal_certificate=false` in every report.
+5. `omega_normalization_exact` is true, and the stored omega scales equal the deterministic minimal dyadic scales.
+6. Across scale-equivalent runs at the same `(N, n_super)`, define the robust strict gain as the hybrid strict endpoint minus the highest baseline strict endpoint among those runs. Require this robust gain to be positive; never accept a positive paired gain produced by degrading its own baseline replay.
+7. Report raw and robust strict improvement, PSD repair shifts, and raw-versus-repaired moment residuals separately.
+8. A negative strict improvement is a valid scientific outcome, not an operational failure.
+9. Keep `formal_certificate=false` in every report.
 
 After pulling results, summarize them:
 

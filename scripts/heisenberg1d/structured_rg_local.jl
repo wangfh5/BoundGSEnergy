@@ -8,6 +8,7 @@ function parse_structured_rg_args(args)
     run_name = nothing
     n_super = STRUCTURED_RG_DEFAULT_N_SUPER
     link_mode = :rho3
+    omega_normalization = :none
     mosek_threads = 16
     feasibility_tolerance = 1e-7
     for arg in args
@@ -17,6 +18,9 @@ function parse_structured_rg_args(args)
             n_super = parse(Int, split(arg, "=", limit=2)[2])
         elseif startswith(arg, "--link-mode=")
             link_mode = Symbol(split(arg, "=", limit=2)[2])
+        elseif startswith(arg, "--omega-normalization=")
+            omega_normalization =
+                Symbol(split(arg, "=", limit=2)[2])
         elseif startswith(arg, "--mosek-threads=")
             mosek_threads = parse(Int, split(arg, "=", limit=2)[2])
         elseif startswith(arg, "--feasibility-tolerance=")
@@ -33,27 +37,51 @@ function parse_structured_rg_args(args)
     validate_structured_rg_support(n_super; minimum_depth=5)
     link_mode in (:rho3, :rdm8) ||
         error("link_mode must be rho3 or rdm8")
+    omega_normalization in STRUCTURED_RG_OMEGA_NORMALIZATIONS ||
+        error("omega_normalization must be none or dyadic_trace")
+    link_mode == :rho3 && omega_normalization != :none &&
+        error("omega normalization is only supported for the RDM8 link")
     mosek_threads >= 1 || error("mosek_threads must be positive")
     0 < feasibility_tolerance <= 1e-7 ||
         error("feasibility_tolerance must lie in (0, 1e-7]")
-    run_name, n_super, link_mode, mosek_threads, feasibility_tolerance
+    run_name,
+    n_super,
+    link_mode,
+    omega_normalization,
+    mosek_threads,
+    feasibility_tolerance
 end
 
 function structured_rg_solve_record(model, label, wall_seconds)
     status = termination_status(model)
+    task = unsafe_backend(model).task
     record = Dict{String, Any}(
         "label" => label,
         "status" => string(status),
+        "raw_status" => raw_status(model),
         "primal_status" => string(primal_status(model)),
         "dual_status" => string(dual_status(model)),
         "wall_seconds" => wall_seconds,
         "solver_wall_seconds" => solve_time(model),
         "scalar_variables" => num_variables(model),
+        "optimizer" => Dict(
+            "interior_point_iterations" =>
+                Mosek.getintinf(task, Mosek.MSK_IINF_INTPNT_ITER),
+            "interior_point_threads" =>
+                Mosek.getintinf(task, Mosek.MSK_IINF_INTPNT_NUM_THREADS),
+            "solved_dual_form" =>
+                Mosek.getintinf(task, Mosek.MSK_IINF_INTPNT_SOLVE_DUAL) == 1,
+        ),
     )
-    if status == MOI.OPTIMAL
-        record["energy"] = objective_value(model)
-        record["objective_bound"] = objective_bound(model)
-        record["residuals"] = mosek_residuals(model)
+    if has_values(model)
+        finite_or_nothing(value) = isfinite(value) ? value : nothing
+        record["energy"] = finite_or_nothing(objective_value(model))
+        record["objective_bound"] =
+            finite_or_nothing(objective_bound(model))
+        record["residuals"] = Dict(
+            key => finite_or_nothing(value)
+            for (key, value) in mosek_residuals(model)
+        )
     end
     record
 end
@@ -98,10 +126,11 @@ end
 function configure_structured_rg_optimizer!(
     model,
     mosek_threads,
-    feasibility_tolerance,
+    feasibility_tolerance;
+    solver_log=false,
 )
     set_optimizer(model, MosekTools.Optimizer)
-    set_silent(model)
+    solver_log ? unset_silent(model) : set_silent(model)
     set_attribute(model, "MSK_IPAR_NUM_THREADS", mosek_threads)
     set_attribute(
         model,
@@ -162,6 +191,7 @@ function structured_rg_main(args)
     run_name,
     n_super,
     link_mode,
+    omega_normalization,
     mosek_threads,
     feasibility_tolerance =
         parse_structured_rg_args(args)
@@ -210,6 +240,7 @@ function structured_rg_main(args)
             n_super,
             virtual_charges,
             super_charges,
+            omega_normalization=omega_normalization,
         )
     end
     hybrid_dual = dualize(primal_model)
@@ -289,6 +320,7 @@ function structured_rg_main(args)
         n_super,
         joinpath(result_dir, "certificates", "structured-rg.jls"),
         link_mode=link_mode,
+        omega_normalization=omega_normalization,
     )
     baseline_certified = parse_exact_rational(
         baseline_certificate["certified_lower_bound_rational"],
@@ -318,17 +350,21 @@ function structured_rg_main(args)
             "bond_dimension" => size(B, 1),
             "dyadic_bits" => RDM8_DYADIC_BITS,
             "link_mode" => string(link_mode),
+            "omega_normalization" => string(omega_normalization),
+            "omega_trace_scales" => link_mode == :rdm8 ?
+                hierarchy.omega_trace_scales :
+                Float64[],
             "local_link_scale" =>
                 link_mode == :rdm8 ?
-                    STRUCTURED_RG_RDM8_LOCAL_LINK_SCALE :
+                    hierarchy.local_link_scale :
                     STRUCTURED_RG_EQUALITY_SCALE,
             "omega4_link_scale" =>
                 link_mode == :rdm8 ?
-                    STRUCTURED_RG_RDM8_OMEGA4_LINK_SCALE :
+                    hierarchy.omega4_link_scale :
                     STRUCTURED_RG_EQUALITY_SCALE,
             "recursion_scale" =>
                 link_mode == :rdm8 ?
-                    STRUCTURED_RG_RDM8_RECURSION_SCALE :
+                    hierarchy.recursion_scale :
                     STRUCTURED_RG_EQUALITY_SCALE,
             "mosek_threads" => mosek_threads,
             "solver_feasibility_tolerance" => feasibility_tolerance,
@@ -363,6 +399,9 @@ function structured_rg_main(args)
                     hierarchy.omega4_link_equality_count :
                     0,
             "omega_count" => length(hierarchy.omega),
+            "omega_trace_scales" => link_mode == :rdm8 ?
+                hierarchy.omega_trace_scales :
+                Float64[],
         ),
         "rho3_checks" => rdm_checks,
         "baseline_rho3_checks" => baseline_rdm_checks,
@@ -413,6 +452,7 @@ function structured_rg_main(args)
             virtual_charges,
             super_charges,
             link_mode=link_mode,
+            omega_normalization=omega_normalization,
         ),
         expected_baseline_structure=h11_model_structure(
             structured.sohs_model,

@@ -88,6 +88,388 @@ for left in 1:4, site in 1:4, right in 1:4
 end
 audit = dyadic_relaxation_audit(B, RDM8_DYADIC_BITS)
 @test audit["physical_relaxation_compatibility_proven"]
+@test structured_rg_omega_trace_scales(B, 10, :none) == ones(7)
+@test structured_rg_rdm8_link_scales(:none) == (
+    local_link=1.0,
+    omega4=16.0,
+    recursion=1.0,
+)
+@test structured_rg_rdm8_link_scales(:dyadic_trace) == (
+    local_link=1.0,
+    omega4=32.0,
+    recursion=8.0,
+)
+@test_throws ErrorException structured_rg_rdm8_link_scales(
+    :unsupported,
+)
+normalization_B = 4 .* B
+normalization_audit =
+    dyadic_relaxation_audit(normalization_B, RDM8_DYADIC_BITS)
+@test normalization_audit["physical_relaxation_compatibility_proven"]
+normalized_scales =
+    structured_rg_omega_trace_scales(
+        normalization_B,
+        10,
+        :dyadic_trace,
+    )
+@test any(>(1), normalized_scales)
+@test any(
+    normalized_scales[index] / normalized_scales[index + 1] < 1
+    for index in 1:(length(normalized_scales) - 1)
+)
+trace_bounds = compressed_trace_bounds(normalization_B, 10)
+raw_rg_trace_bounds =
+    structured_rg_trace_bounds(
+        normalization_B,
+        10;
+        link_mode=:rdm8,
+    )
+normalized_rg_trace_bounds = structured_rg_trace_bounds(
+    normalization_B,
+    10;
+    link_mode=:rdm8,
+    omega_normalization=:dyadic_trace,
+)
+for (index, depth) in enumerate(4:10)
+    scale = exact_rational(normalized_scales[index])
+    bound = trace_bounds["omega$(depth)"]
+    group = "hybrid_omega$(depth)"
+    @test ispow2(Int(normalized_scales[index]))
+    @test scale >= bound
+    @test scale == 1 || scale / 2 < bound
+    @test normalized_rg_trace_bounds[group] ==
+        raw_rg_trace_bounds[group] / scale
+    @test normalized_rg_trace_bounds[group] <= 1
+    if scale != 1
+        @test normalized_rg_trace_bounds[group] > 1 // 2
+    end
+end
+@test_throws ErrorException structured_rg_omega_trace_scales(
+    B,
+    10,
+    :unsupported,
+)
+@test_throws ErrorException structured_rg_trace_bounds(
+    B,
+    10;
+    link_mode=:rho3,
+    omega_normalization=:dyadic_trace,
+)
+
+@testset "safe replay residual polishing" begin
+    polishing_transcript = (
+        variable_count=9,
+        canonical_words=[
+            Int[],
+            H11_HAMILTONIAN_WORD,
+            [2],
+            [3],
+        ],
+        objective=(
+            constant=0.0,
+            terms=[(1, 1.0)],
+        ),
+        moment_equalities=[
+            (
+                constant=0.0,
+                rhs=0.0,
+                terms=[(2, 1.0)],
+            ),
+            (
+                constant=0.0,
+                rhs=0.0,
+                terms=[(3, 1.0)],
+            ),
+            (
+                constant=0.0,
+                rhs=0.0,
+                terms=[
+                    (4, 1.0),
+                    (5, 1.0),
+                    (8, 1.0),
+                ],
+            ),
+            (
+                constant=0.0,
+                rhs=0.0,
+                terms=[(9, 1.0)],
+            ),
+        ],
+        psd_variable_blocks=[
+            (
+                group="toy_sohs",
+                dimension=1,
+                variable_indices=reshape([6], 1, 1),
+            ),
+        ],
+        omega_slacks=[
+            (
+                group="toy_omega",
+                dimension=1,
+                upper_entries=[
+                    (
+                        constant=0.0,
+                        rhs=0.0,
+                        terms=[(7, 1.0)],
+                    ),
+                ],
+            ),
+        ],
+    )
+    polishing_audit =
+        structured_rg_polishing_variable_audit(
+            polishing_transcript,
+        )
+    @test polishing_audit.covered_variable_count == 9
+    @test polishing_audit.safe_variable_indices == [4, 5, 8, 9]
+    uncovered_transcript = merge(
+        polishing_transcript,
+        (variable_count=10,),
+    )
+    @test_throws ErrorException structured_rg_polishing_variable_audit(
+        uncovered_transcript,
+    )
+
+    matrix = sparse([1.0 0.0 1.0; 0.0 1.0 1.0])
+    numerical = structured_rg_sparse_minimum_norm(
+        matrix,
+        [1.0, 2.0],
+    )
+    @test matrix * numerical.solution ≈ [1.0, 2.0]
+    @test norm(numerical.solution) ≈ sqrt(2)
+    @test numerical.solution ≈ [0.0, 1.0, 1.0] atol = 1e-12
+
+    original = (
+        certified=1 // 4,
+        objective=1 // 2,
+        sohs_groups=Dict("sohs" => 1),
+        rg_groups=Dict("omega" => 2),
+        rg_correction=-1 // 16,
+        moment_residuals=ExactRational[
+            0,
+            0,
+            1 // 8,
+        ],
+    )
+    improved = merge(
+        original,
+        (
+            certified=3 // 8,
+            moment_residuals=ExactRational[
+                0,
+                0,
+                0,
+            ],
+        ),
+    )
+    @test structured_rg_accept_polished_replay(
+        original,
+        improved,
+    )
+    @test !structured_rg_accept_polished_replay(
+        original,
+        merge(improved, (certified=original.certified,)),
+    )
+    @test_throws ErrorException structured_rg_accept_polished_replay(
+        original,
+        merge(
+            improved,
+            (objective=original.objective + 1 // 16,),
+        ),
+    )
+end
+
+@testset "structured-RG constraint partition" begin
+    partition_model = Model()
+    @variable(partition_model, partition_x[1:3])
+    equality_one =
+        @constraint(partition_model, 2 * partition_x[1] == 0)
+    equality_two =
+        @constraint(partition_model, 3 * partition_x[2] == 0)
+    sohs_constraint = @constraint(
+        partition_model,
+        [partition_x[3]] in
+        MOI.PositiveSemidefiniteConeTriangle(1),
+    )
+    omega_constraint = @constraint(
+        partition_model,
+        [partition_x[1] + partition_x[3]] in
+        MOI.PositiveSemidefiniteConeTriangle(1),
+    )
+    moment_occurrences = Any[
+        (equality_one, 1),
+        (equality_two, 1),
+    ]
+    partition_audit = structured_rg_constraint_partition_audit(
+        partition_model,
+        moment_occurrences,
+        Any[sohs_constraint],
+        Any[omega_constraint],
+    )
+    @test partition_audit.equality_component_count == 2
+    @test partition_audit.sohs_constraint_count == 1
+    @test partition_audit.omega_constraint_count == 1
+    @test_throws ErrorException structured_rg_constraint_partition_audit(
+        partition_model,
+        moment_occurrences[1:1],
+        Any[sohs_constraint],
+        Any[omega_constraint],
+    )
+    @test_throws ErrorException structured_rg_constraint_partition_audit(
+        partition_model,
+        moment_occurrences,
+        Any[sohs_constraint, sohs_constraint],
+        Any[omega_constraint],
+    )
+    @test_throws ErrorException structured_rg_constraint_partition_audit(
+        partition_model,
+        moment_occurrences,
+        Any[sohs_constraint],
+        Any[],
+    )
+    @constraint(partition_model, partition_x[1] >= -1)
+    @test_throws ErrorException structured_rg_constraint_partition_audit(
+        partition_model,
+        moment_occurrences,
+        Any[sohs_constraint],
+        Any[omega_constraint],
+    )
+end
+
+@testset "dyadic omega variable substitution" begin
+    unscaled_model = Model()
+    unscaled = add_rdm8_rg_hierarchy!(
+        unscaled_model,
+        zeros(256, 256),
+        normalization_B,
+        5,
+        virtual_charges,
+        super_charges,
+        omega_normalization=:none,
+    )
+    normalized_model = Model()
+    normalized = add_rdm8_rg_hierarchy!(
+        normalized_model,
+        zeros(256, 256),
+        normalization_B,
+        5,
+        virtual_charges,
+        super_charges,
+        omega_normalization=:dyadic_trace,
+    )
+    @test any(>(1), normalized.omega_trace_scales)
+    @test normalized.omega_trace_scales[1] /
+        normalized.omega_trace_scales[2] < 1
+    @test (
+        normalized.local_link_scale,
+        normalized.omega4_link_scale,
+        normalized.recursion_scale,
+    ) == (1.0, 32.0, 8.0)
+
+    unscaled_psd_blocks = all_constraints(
+        unscaled_model,
+        Vector{VariableRef},
+        MOI.PositiveSemidefiniteConeTriangle,
+    )
+    normalized_psd_blocks = all_constraints(
+        normalized_model,
+        Vector{VariableRef},
+        MOI.PositiveSemidefiniteConeTriangle,
+    )
+    rho4_block_count =
+        length(charge_blocks(rho4_charges(super_charges)))
+    omega_block_count = length(charge_blocks(
+        omega_charges(super_charges, virtual_charges),
+    ))
+    @test length(unscaled_psd_blocks) ==
+        rho4_block_count +
+        length(unscaled.omega) * omega_block_count
+    @test length(normalized_psd_blocks) ==
+        length(unscaled_psd_blocks)
+    variable_map = Dict{VariableRef, VariableRef}()
+    omega_scales = Dict{VariableRef, Float64}()
+    for (block_index, (unscaled_block, normalized_block)) in
+        enumerate(zip(unscaled_psd_blocks, normalized_psd_blocks))
+        unscaled_variables = constraint_object(unscaled_block).func
+        normalized_variables = constraint_object(normalized_block).func
+        length(unscaled_variables) == length(normalized_variables) ||
+            error("normalization changed a PSD block dimension")
+        omega_index = cld(
+            max(0, block_index - rho4_block_count),
+            omega_block_count,
+        )
+        scale = omega_index == 0 ?
+            1.0 :
+            normalized.omega_trace_scales[omega_index]
+        for (unscaled_variable, normalized_variable) in
+            zip(unscaled_variables, normalized_variables)
+            variable_map[normalized_variable] = unscaled_variable
+            omega_scales[normalized_variable] = scale
+        end
+    end
+    @test Set(keys(variable_map)) ==
+        Set(all_variables(normalized_model))
+    @test Set(values(variable_map)) ==
+        Set(all_variables(unscaled_model))
+
+    unscaled_values = Dict(
+        variable => (mod(index, 17) - 8) / 16
+        for (index, variable) in
+            enumerate(all_variables(unscaled_model))
+    )
+    normalized_values = Dict(
+        variable =>
+            unscaled_values[variable_map[variable]] /
+            omega_scales[variable]
+        for variable in all_variables(normalized_model)
+    )
+    unscaled_equalities = all_constraints(
+        unscaled_model,
+        AffExpr,
+        MOI.EqualTo{Float64},
+    )
+    normalized_equalities = all_constraints(
+        normalized_model,
+        AffExpr,
+        MOI.EqualTo{Float64},
+    )
+    @test length(unscaled_equalities) ==
+        length(normalized_equalities)
+    evaluate_equality(constraint, values) = JuMP.value(
+        variable -> values[variable],
+        constraint_object(constraint).func,
+    )
+    unscaled_residuals = [
+        evaluate_equality(constraint, unscaled_values)
+        for constraint in unscaled_equalities
+    ]
+    normalized_residuals = [
+        evaluate_equality(constraint, normalized_values)
+        for constraint in normalized_equalities
+    ]
+    local_link_count = unscaled.rho4_link_equality_count
+    omega4_link_count = unscaled.omega4_link_equality_count
+    omega4_first = local_link_count + 1
+    omega4_last = local_link_count + omega4_link_count
+    recursion_first = omega4_last + 1
+    @test normalized_residuals[1:local_link_count] ==
+        unscaled_residuals[1:local_link_count]
+    @test normalized_residuals[omega4_first:omega4_last] ==
+        unscaled_residuals[omega4_first:omega4_last] .*
+        (
+            normalized.omega4_link_scale /
+            unscaled.omega4_link_scale /
+            normalized.omega_trace_scales[1]
+        )
+    @test recursion_first <= length(unscaled_residuals)
+    @test normalized_residuals[recursion_first:end] ==
+        unscaled_residuals[recursion_first:end] .*
+        (
+            normalized.recursion_scale /
+            unscaled.recursion_scale /
+            normalized.omega_trace_scales[2]
+        )
+end
 
 hierarchy = add_rg_hierarchy!(
     toy_model,
