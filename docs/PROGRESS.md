@@ -6,7 +6,16 @@ For a concise four-section summary, see the standalone [Challenge Report](challe
 
 ## Executive status
 
-The challenge asks for certified energy-density lower bounds for increasingly large spin-1/2 Heisenberg systems using NPA constraints with RG coarse-graining. The first target is a periodic chain with `N = 200` and certified gap at most `1e-5`.
+The challenge asks for certified energy-density lower bounds for increasingly large spin-1/2 Heisenberg systems using NPA constraints with RG coarse-graining. Its four official targets are:
+
+| Official target | Accepted state |
+| --- | --- |
+| 1D Heisenberg, `N = 200`, gap at most `1e-5` | Not complete. The accepted fused certificate is at `N = 20`; larger screens have not passed the strict certificate gate. |
+| 1D J1-J2 Heisenberg, `N = 100`, gap at most `1e-3` | Not attempted as a fused certificate target. |
+| 2D Heisenberg, `16 × 16`, gap at most `1e-3` | Not attempted as a fused certificate target. |
+| 2D J1-J2 Heisenberg, `10 × 10`, gap at most `1e-2` | Not attempted as a fused certificate target. |
+
+Formal target completion is therefore `0 / 4`. The `N = 20` result is a completed validation-scale proof of concept for the fused algorithm, not completion of any full-size challenge target. The achieved system size is `20 / 200` of the first target, but this ratio must not be interpreted as a compute- or research-effort percentage because the SDP cost grows superlinearly.
 
 The project has established three independently replayable certificate routes at `N = 20`:
 
@@ -14,7 +23,7 @@ The project has established three independently replayable certificate routes at
 2. A full structured-NPA/SOHS relaxation without RG certifies a gap of `9.040106778343054e-6`, passing the requested accuracy threshold at the validation size.
 3. A unified structured-NPA + RG relaxation reconstructs an eight-spin RDM from the full moment basis, audits the moment-to-RDM coefficients exactly, and attaches the exact dyadic RG hierarchy in the same SDP. At `D = 4`, `n_super = 5`, it certifies a gap of `5.214353500759827e-6`, passing the accuracy gate and strictly improving both parent relaxations.
 
-The issue is not complete. `N = 50` and `N = 100` currently have numerical screens, not accepted lower certificates, and no `N = 200` solve is claimed.
+The issue is not complete. At `N = 30`, matched three-route screens solve cleanly and show a positive raw fusion gain, but exact replay gives a negative strict gain. In the first large-size HPC campaign, the `N = 50` fused solves stalled, the `N = 100` structured-NPA parent stalled before a fused result was available, and the queued `N = 200` job was canceled without consuming compute. These are diagnostic failures, not accepted lower certificates.
 
 ## Claim discipline
 
@@ -83,6 +92,8 @@ The H0 baseline also retains a rationally post-certified order-2 structured-NPA 
 | `N = 20`, `D = 4`, `n_super = 10` compressed | raw objective `-0.44532643488209284` | `OPTIMAL`, numerical | Establishes the predecessor used by the exact-compatible RG certificate. |
 | `N = 20`, unified structured NPA + RG/RDM8, `n_super = 5` | certified lower bound `-0.44522454084723984` | `OPTIMAL`, certified | 76,501 scalar variables; rigorous gap `5.214353500759827e-6`; strictly improves both parent routes. |
 | `N = 30`, unified structured NPA + RG/RDM8, `n_super = 5` | raw gain `2.1437405645086116e-7` | `OPTIMAL`, exploratory | Fixed-depth raw tightening persists, but same-process strict replay loses `1.3332406440951713e-5` because moment residuals grow; not a formal finite-size certificate. |
+| `N = 30`, normalized unified model, `n_super = 8`, coefficient scale `512` | raw gain `1.6160551729593742e-6` | all three routes `OPTIMAL`, exploratory | The deeper RG hierarchy solves, but exact replay gives strict gain `-3.2971641651619926e-5`; the strict-improvement gate fails. |
+| `N = 30`, normalized unified model, `n_super = 8`, coefficient scale `16384` | raw gain `1.5211146759397387e-6` | all three routes `OPTIMAL`, exploratory | The equivalent scaling control also fails strict replay, with strict gain `-3.580298304150444e-5`. |
 | `N = 50`, `D = 4`, `n_super = 25` compressed | raw objective `-0.443902769427835` | `OPTIMAL`, numerical | Improves the matched `D = 3` objective by `1.1728327994980914e-3`; diagnostic finite gap `4.258676536669781e-4`. |
 | `N = 100`, `D = 4`, `n_super = 50` compressed | raw objective `-0.4438211577378427` | `OPTIMAL`, numerical | Improves the matched `D = 3` objective by `1.3336436432175303e-3`; diagnostic finite gap `5.924292490814831e-4`. |
 | `N = 100`, `D = 5`, `n_super = 40` compressed | raw objective `-0.4436360816706201` | `OPTIMAL`, numerical | Improves the deeper `D = 4`, `n_super = 50` objective by `1.850760672226226e-4`; total solve time was 911.5 s. |
@@ -129,12 +140,12 @@ The `N = 50` and `N = 100` entries are historical numerical screening evidence, 
 | Rung | Current state | Gate |
 | --- | --- | --- |
 | `N = 20` | certified by three routes | The unified route is the tightest, passes `1e-5` at `5.21e-6`, and strictly improves both parent methods. |
-| `N = 30` | fixed-depth exploratory screen | Need the `n_super = 8` fixed-coverage point to determine whether deeper RG offsets residual growth. |
-| `N = 50` | numerical screens only | Proceed only after the `N = 30`, `n_super = 8` strict trend gate passes. |
-| `N = 100` | high-memory RG numerical screen only | Need a strict certificate before its gap can be claimed. |
-| `N = 200` | not run | Launch only after a smaller rung demonstrates both accuracy and a credible resource projection. |
+| `N = 30` | three-route `n_super = 8` screens solve, strict gate fails | Raw fusion gains remain positive, but ordinary moment residuals make the strict gains negative at both tested equivalent coefficient scales. |
+| `N = 50` | compressed numerical screens exist; matched fused HPC jobs failed | The structured parent completed in the first campaign, but the fused SDP returned `MSK_RES_TRM_STALL`; no strict fused certificate exists. |
+| `N = 100` | high-memory compressed screens exist; matched structured baseline failed | The first matched HPC job stalled in the structured-NPA parent, before an accepted fused result. |
+| `N = 200` | not run | The queued job was canceled after the smaller-size failures showed that the same formulation was not ready. |
 
-The local fusion gate is complete. The next work should measure two separate size trends with the same exact scaling: fixed depth `(N, n_super) = (20, 5), (30, 5), (40, 5)` and fixed physical coverage `(30, 8), (40, 10)`. Fixed depth does not currently show an increasing benefit with `N`; the raw gain falls from `3.9178868482814266e-7` at `N = 20` to `2.1437405645086116e-7` at `N = 30`, while the strict residual tax grows. High-performance computing becomes justified only if increasing RG coverage preserves a positive strict gain and gives a credible projection toward `N = 200`.
+The local fusion gate is complete, but the size trend is not. Exact dyadic normalization and RG equality rescaling remove the exponential `omega_k` magnitude growth and allow the normalized `N = 30`, `n_super = 8` formulation to solve. They do not yet control the accumulated ordinary moment residuals well enough for strict replay. The next technical blocker is therefore the numerical conditioning of the structured-NPA coefficient-matching equations, not additional CPU parallelism. Further `N = 50`, `N = 100`, or `N = 200` runs are scientifically justified only after an `N = 30` formulation passes the same strict-improvement gate without post-processing away the residual loss.
 
 ## Validation commands
 

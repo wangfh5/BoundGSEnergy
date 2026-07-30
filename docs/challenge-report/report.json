@@ -9,7 +9,7 @@
       "blocks": [
         {
           "kind": "text",
-          "text": "The challenge asks for certified lower bounds on the ground-state energy density of the periodic spin-1/2 Heisenberg chain using NPA constraints with renormalization-group coarse-graining. The first full target is N = 200 with a rigorous lower-to-upper gap no larger than 1e-5."
+          "text": "The challenge asks whether structured NPA and renormalization-group compression can be fused into a scalable certification method for spin-1/2 Heisenberg systems. Structured NPA gives strong local moment constraints but becomes harder to solve as the system grows; RG compression carries consistency to larger physical regions using smaller PSD variables but is weaker on its own. The four official targets cover 1D and 2D Heisenberg and J1-J2 systems; the first is the periodic Heisenberg chain at N = 200 with a rigorous gap no larger than 1e-5."
         },
         {
           "kind": "card",
@@ -28,7 +28,8 @@
             ["Registration", "PR #219"],
             ["Validation system", "Periodic N = 20 Heisenberg chain"],
             ["Final target", "Periodic N = 200, certified gap <= 1e-5"],
-            ["Current scope", "N = 20 certification complete; N = 200 not yet attempted"]
+            ["Current scope", "N = 20 fusion proof of concept complete; no full-size target complete"],
+            ["Official targets completed", "0 / 4"]
           ]
         }
       ]
@@ -55,7 +56,7 @@
         },
         {
           "kind": "text",
-          "text": "The model reconstructs an eight-spin physical RDM from the complete structured moment basis, links an independent PSD copy coefficient-by-coefficient, and applies the audited dyadic RG maps to that copy. The structured and RG constraints are therefore intersected in one physical relaxation. Replay rebuilds the complete formulation, binds the objective direction and every equality scale, and subtracts rigorous SOHS and RG-slack corrections."
+          "text": "The fusion is one SDP rather than a post-processing combination of two bounds. Structured-NPA Pauli moments reconstruct an eight-spin physical RDM; an independent PSD copy is linked coefficient-by-coefficient to that RDM; the audited dyadic RG map then generates compressed variables omega_4, omega_5, ... subject to recursive left- and right-marginal constraints. The matched RG-only and structured-NPA-only routes are controls, while the fused route contains both constraint families and optimizes the same Heisenberg energy. Replay rebuilds the complete formulation, binds the objective direction and every equality scale, and subtracts rigorous SOHS and RG-slack corrections."
         },
         {
           "kind": "table",
@@ -110,14 +111,15 @@
           "kind": "verdict",
           "status": "warn",
           "label": "Challenge not complete",
-          "why": "The required N = 200 certificate has not been produced. An exploratory N = 30, n_super = 5 screen keeps a positive raw gain but loses strict gain to growing moment residuals."
+          "why": "Formal target completion is 0 / 4. N = 30 screens solve but fail strict replay, N = 50 stalls in the fused SDP, N = 100 stalls in the structured-NPA parent, and N = 200 was canceled without running."
         },
         {
           "kind": "table",
           "columns": ["Trend point", "Raw fusion gain", "Strict fusion gain", "Interpretation"],
           "rows": [
             ["N = 20, n_super = 5", "3.9179e-7", "2.7158e-6", "formal certificate; fusion wins"],
-            ["N = 30, n_super = 5", "2.1437e-7", "-1.3332e-5", "exploratory only; fixed depth is insufficient"]
+            ["N = 30, n_super = 5", "2.1437e-7", "-1.3332e-5", "exploratory only; fixed depth is insufficient"],
+            ["N = 30, n_super = 8", "1.6161e-6", "-3.2972e-5", "all routes OPTIMAL; strict residual gate fails"]
           ],
           "numeric": [false, true, true, false]
         },
@@ -157,7 +159,7 @@
           "blocks": [
             {
               "kind": "text",
-              "text": "Keep the structured hierarchy, dyadic map, and equality scales fixed, then increase RG coverage rather than system size alone. The next gate is N = 30, n_super = 8. Only a positive strict gain there justifies N = 50 and eventual high-memory N = 200 runs."
+              "text": "The normalized N = 30, n_super = 8 model now solves, but ordinary moment residuals still erase its positive raw fusion gain during strict replay. The next task is to improve the numerical conditioning of the structured coefficient-matching equations without changing the relaxation. Larger runs are justified only after N = 30 passes the strict-improvement gate."
             }
           ]
         }

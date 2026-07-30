@@ -4,6 +4,22 @@ Certified ground-state energy bounds for quantum spin systems via structured NPA
 
 This repository is team **BoundGSEnergy**'s entry for [QuantumBFS/quantum.harness#49](https://github.com/QuantumBFS/quantum.harness/issues/49), registered as [PR #219](https://github.com/QuantumBFS/quantum.harness/pull/219).
 
+## Goal and fused algorithm
+
+Structured NPA and RG compression address complementary bottlenecks. Structured NPA gives strong local moment, RDM, state-optimality, sparsity, and symmetry constraints, but its SDP becomes harder to solve as the system grows. RG compression represents progressively larger physical regions by smaller coarse-grained PSD variables, making long-distance consistency cheaper to express, but its lower bound is much weaker on its own. The goal is to retain the local accuracy of structured NPA while adding RG consistency across larger physical scales.
+
+The fusion is one SDP, not a post-processing combination of two independently computed bounds:
+
+```text
+structured Pauli moments
+    -> audited eight-spin physical RDM
+    -> exact-compatible dyadic RG map
+    -> recursive compressed PSD witnesses
+    -> one Heisenberg energy lower bound
+```
+
+The structured moments reconstruct an eight-spin RDM coefficient by coefficient. An independent PSD copy is linked exactly to that RDM, then the same audited dyadic coarse-grainer generates `omega_4, omega_5, ...` subject to recursive left- and right-marginal constraints. Every physical spin-chain state supplies a feasible witness, so the fused optimum remains a valid lower bound. The repository evaluates matched RG-only and structured-NPA-only parents as controls; the fusion route contains both constraint families and is the proposed algorithm.
+
 ## Current result
 
 The challenge target is a certified energy-density gap of at most `1e-5` for the periodic spin-1/2 Heisenberg chain at `N = 200`. The target system size has not yet been reached.
