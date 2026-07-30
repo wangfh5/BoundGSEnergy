@@ -25,6 +25,7 @@ autoresearch-run = { source = "QuantumBFS/sci-brain/skills/autoresearch-run" }
 idea-writer = { source = "QuantumBFS/sci-brain/skills/idea-writer" }
 take-challenge = { source = "QuantumBFS/quantum.harness/skills/take-challenge" }
 challenge-report = { source = "QuantumBFS/quantum.harness/skills/challenge-report" }
+boundgsenergy-hpc-operations = { type = "local", path = ".agents/skills/boundgsenergy-hpc-operations" }
 
 [options]
 

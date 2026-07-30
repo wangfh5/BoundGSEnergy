@@ -152,6 +152,26 @@ function run_size_screen()
     B = dyadic_coarse_grainer(Bcharged, RDM8_DYADIC_BITS)
     compatibility = dyadic_relaxation_audit(B, RDM8_DYADIC_BITS)
 
+    rg_only = solve_formulation(
+        B,
+        CONFIG.n_super,
+        STRUCTURED_RG_VIRTUAL_CHARGES,
+        STRUCTURED_RG_SUPER_CHARGES;
+        blocked=true,
+        rdm4=true,
+        mosek_threads=CONFIG.mosek_threads,
+        feasibility_tolerance=CONFIG.feasibility_tolerance,
+    )
+    rg_only["status"] == "OPTIMAL" ||
+        error("size-screen RG-only parent did not terminate OPTIMAL")
+    rg_only["label"] = "rg_rdm8"
+    rg_only["system_scope"] = "finite_periodic_chain"
+    rg_only["system_size"] = CONFIG.system_size
+    rg_only["support_sites"] = 2 * CONFIG.n_super
+    rg_only["bond_dimension"] = size(B, 1)
+    rg_only["formal_certificate"] = false
+    GC.gc()
+
     build_start = time_ns()
     structured = build_structured_moment_model()
     primal_model = structured.model
@@ -246,6 +266,13 @@ function run_size_screen()
     raw_improvement = hybrid["energy"] - baseline["energy"]
     strict_improvement =
         hybrid_replay.certified - baseline_replay.certified
+    hybrid_over_rg_only =
+        hybrid["energy"] - rg_only["energy"]
+    structured_over_rg_only =
+        baseline["energy"] - rg_only["energy"]
+    exact_reference =
+        bethe_ground_reference(CONFIG.system_size)
+    exact_energy = exact_reference["energy_per_site"]
     all_dimensions = [
         block.dimension
         for block in vcat(
@@ -271,7 +298,7 @@ function run_size_screen()
                 CONFIG.feasibility_tolerance,
             "formal_certificate" => false,
             "scope" =>
-                "exploratory raw solve and same-process exact replay",
+                "matched three-route exploratory solve and same-process fusion replay",
             "system_size_instrumentation" =>
                 "private-module replacement of the pinned H10_N constant",
             "equality_scales" => Dict(
@@ -286,7 +313,13 @@ function run_size_screen()
                 "pso" => structured.configuration.pso,
                 "lso" => structured.configuration.lso,
             ),
+            "routes" => [
+                "rg_rdm8",
+                "structured_npa",
+                "structured_npa_rg",
+            ],
         ),
+        "exact_reference" => exact_reference,
         "coarse_grainer" => Dict(
             "vumps" => vumps,
             "loaded_from_cache" => loaded_from_cache,
@@ -301,6 +334,8 @@ function run_size_screen()
             "build_wall_seconds" => build_wall,
             "baseline_scalar_variables" =>
                 baseline_replay.structure.variable_count,
+            "rg_only_scalar_variables" =>
+                rg_only["scalar_variables"],
             "hybrid_scalar_variables" =>
                 hybrid_structure.variable_count,
             "baseline_psd_block_count" =>
@@ -328,12 +363,16 @@ function run_size_screen()
                 )
             ),
         ),
+        "rg_only" => rg_only,
         "baseline" => baseline,
         "hybrid" => hybrid,
         "baseline_replay" => replay_summary(baseline_replay),
         "hybrid_replay" => replay_summary(hybrid_replay),
         "comparison" => Dict(
             "raw_improvement" => raw_improvement,
+            "hybrid_over_rg_only" => hybrid_over_rg_only,
+            "structured_over_rg_only" =>
+                structured_over_rg_only,
             "strict_improvement" => float_down(strict_improvement),
             "strict_improvement_rational" =>
                 string(strict_improvement),
@@ -344,10 +383,25 @@ function run_size_screen()
         ),
         "gates" => Dict(
             "both_optimal" => true,
+            "all_three_optimal" => true,
             "raw_monotonicity_passed" =>
                 hybrid["energy"] +
                 STRUCTURED_RG_ENERGY_TOLERANCE >=
                 baseline["energy"],
+            "fusion_dominates_rg_only" =>
+                hybrid["energy"] +
+                STRUCTURED_RG_ENERGY_TOLERANCE >=
+                rg_only["energy"],
+            "all_raw_objectives_below_finite_reference" =>
+                all(
+                    energy <=
+                    exact_energy + STRUCTURED_RG_ENERGY_TOLERANCE
+                    for energy in (
+                        rg_only["energy"],
+                        baseline["energy"],
+                        hybrid["energy"],
+                    )
+                ),
             "strict_improvement_passed" =>
                 strict_improvement > 0,
             "local_rdm_exactness_passed" =>
@@ -361,9 +415,12 @@ function run_size_screen()
     )
     write_h1_json(result_path, record)
     @printf(
-        "N=%d n_super=%d raw improvement %.3e strict improvement %.3e\n",
+        "N=%d n_super=%d RG %.9f structured %.9f fusion %.9f raw fusion gain %.3e strict fusion gain %.3e\n",
         CONFIG.system_size,
         CONFIG.n_super,
+        rg_only["energy"],
+        baseline["energy"],
+        hybrid["energy"],
         raw_improvement,
         Float64(strict_improvement),
     )
